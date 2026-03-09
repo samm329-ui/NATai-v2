@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <!-- ============================================================
+         META TAGS & PAGE CONFIGURATION
+         These tags control how the page is displayed and behaves
+         across different devices, especially mobile.
+         ============================================================ -->
+
+    <!-- Character encoding: UTF-8 ensures proper display of international
+         characters (accents, emoji, non-Latin scripts). -->
+    <meta charset="UTF-8">
+
+    <!-- VIEWPORT: Critical for responsive design on mobile devices.
+         - width=device-width: Match the screen width of the device
+         - initial-scale=1.0: No zoom on load (1:1 pixel ratio)
+         - maximum-scale=1.0, user-scalable=no: Prevents pinch-zoom
+           (useful for app-like experiences where zoom would break layout)
+         - viewport-fit=cover: Extends content into the "safe area" on
+           iOS devices with notches (iPhone X+). Without this, content
+           would stop at the notch edges, leaving awkward gaps. -->
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+    <!-- APPLE-MOBILE-WEB-APP-CAPABLE: When "Add to Home Screen" is used
+         on iOS, this makes the page open in standalone mode (no Safari
+         UI bars). The page looks and feels like a native app. -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+
+    <!-- APPLE-MOBILE-WEB-APP-STATUS-BAR-STYLE: Controls the iOS status
+         bar appearance in standalone mode. "black-translucent" makes
+         the status bar transparent so content can extend underneath. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- THEME-COLOR: Sets the browser chrome color (address bar on
+         mobile Chrome, status bar on Android). Creates a cohesive
+         look when the page loads. -->
+    <meta name="theme-color" content="#050510">
+
+    <title>N.A.T.</title>
+
+    <!-- FONTS: Using Poppins for a modern, clean, and premium feel.
+         Weights 300 (Light), 400 (Regular), 500 (Medium), 600 (Semi-bold),
+         700 (Bold) cover all typography needs. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <!-- STYLESHEETS: The application uses a single, consolidated CSS
+         file for all styling. This includes layout, colors, animations,
+         and responsive overrides. -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <!-- ============================================================
+         ORB CONTAINER
+         This is where the Orb WebGL canvas will be rendered.
+         It's positioned absolutely to cover the entire background.
+         ============================================================ -->
+    <div id="orb-container"></div>
+
+    <div class="app">
+        <!-- ============================================================
+             HEADER
+             Contains the logo, mode switch (General/Realtime), status
+             badge, and new chat button. Fixed at the top.
+             ============================================================ -->
+        <header class="header glass-panel">
+            <div class="header-left">
+                <h1 class="logo">N.A.T.</h1>
+                <span class="tagline">Neural Assistant Technology</span>
+            </div>
+
+            <div class="header-center">
+                <!-- MODE SWITCH: Toggles between General (text) and Realtime (voice)
+                     modes. The .mode-slider is a visual indicator that moves
+                     between the two buttons so the slider can animate between them. -->
+                <div class="mode-switch" id="mode-switch">
+                    <div class="mode-slider" id="mode-slider"></div>
+                    <button class="mode-btn active" data-mode="general" id="btn-general">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                        </svg>
+                        General
+                    </button>
+                    <button class="mode-btn" data-mode="realtime" id="btn-realtime">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="2" y1="12" x2="22" y2="12" />
+                            <path
+                                d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                        </svg>
+                        Realtime
+                    </button>
+                </div>
+            </div>
+
+            <div class="header-right">
+                <!-- STATUS BADGE: Shows connection state (Online/Offline). -->
+                <div class="status-badge" id="status-badge">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Online</span>
+                </div>
+                <!-- SEARCH RESULTS: Toggle to show Tavily live search data (Realtime mode). -->
+                <button class="btn-icon search-results-toggle" id="search-results-toggle" title="View sources"
+                    style="display: none;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="1" />
+                        <circle cx="12" cy="5" r="1" />
+                        <circle cx="12" cy="19" r="1" />
+                    </svg>
+                </button>
+                <button class="btn-icon terminal-toggle-btn" id="terminal-toggle-btn" title="Terminal Panel">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="4 17 10 11 4 5"></polyline>
+                        <line x1="12" y1="19" x2="20" y2="19"></line>
+                    </svg>
+                </button>
+                <button class="btn-icon new-chat-btn" id="new-chat-btn" title="New Chat">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- ============================================================
+             CHAT AREA
+             Scrollable region containing the conversation. Shows a
+             welcome screen (with chips) when empty, or message bubbles
+             when there's history.
+             ============================================================ -->
+        <main class="chat-area" id="chat-area">
+            <div class="chat-messages" id="chat-messages">
+                <!-- WELCOME SCREEN: Shown when there are no messages.
+                     Chips are quick-action buttons that send preset
+                     prompts when clicked. The greeting text (e.g. "Good
+                     evening") can be time-based. -->
+                <div class="welcome-screen" id="welcome-screen">
+                    <div class="welcome-icon">
+                        <!-- Stacked layers icon: symbolizes AI/layers of intelligence -->
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                            <path d="M2 17l10 5 10-5" />
+                            <path d="M2 12l10 5 10-5" />
+                        </svg>
+                    </div>
+                    <h2 class="welcome-title" id="welcome-title">Good evening.</h2>
+                    <p class="welcome-sub">How may I assist you today?</p>
+                    <div class="welcome-chips">
+                        <button class="chip" data-msg="What can you do?">What can you do?</button>
+                        <button class="chip" data-msg="Open YouTube for me">Open YouTube</button>
+                        <button class="chip" data-msg="Tell me a fun fact">Fun fact</button>
+                        <button class="chip" data-msg="Play some music">Play music</button>
+                        <button class="chip chip-terminal" data-msg="Run command: echo Hello from Natasha">Run terminal cmd</button>
+                        <button class="chip chip-terminal" data-msg="List my Documents folder">List Documents</button>
+                        <button class="chip chip-terminal" data-msg="Create a folder called NatProjects on my Desktop">Create folder</button>
+                        <button class="chip chip-browser" data-msg="Search for Python tutorials on YouTube">Search YouTube</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- ============================================================
+             INPUT BAR
+             Fixed at bottom. Contains: auto-resizing textarea, mic
+             (voice input), TTS (text-to-speech toggle), and send.
+             SVG icons use viewBox for scaling; stroke attributes
+             control line style. Multiple SVGs per button allow
+             different states (e.g. mic on vs off).
+             ============================================================ -->
+        <footer class="input-bar glass-panel">
+            <div class="input-wrapper">
+                <textarea id="message-input" placeholder="Ask N.A.T. anything..." rows="1" maxlength="32000"></textarea>
+                <div class="input-actions">
+                    <!-- MIC BUTTON -->
+                    <button class="action-btn mic-btn" id="mic-btn" title="Voice input">
+                        <!-- Microphone outline: mic body + stand -->
+                        <svg class="mic-icon" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                            <line x1="12" y1="19" x2="12" y2="23" />
+                            <line x1="8" y1="23" x2="16" y2="23" />
+                        </svg>
+                        <!-- Filled square: "stop recording" / active state -->
+                        <svg class="mic-icon-active" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                            <rect x="4" y="4" width="16" height="16" rx="3" />
+                        </svg>
+                    </button>
+                    <!-- TTS BUTTON: Text-to-speech. .tts-icon-off = speaker
+                         with X (disabled). .tts-icon-on = speaker with
+                         sound waves (enabled). -->
+                    <button class="action-btn tts-btn" id="tts-btn" title="Text to Speech">
+                        <!-- Speaker with X: TTS off -->
+                        <svg class="tts-icon-off" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                            <line x1="23" y1="9" x2="17" y2="15" />
+                            <line x1="17" y1="9" x2="23" y2="15" />
+                        </svg>
+                        <!-- Speaker with sound waves: TTS on -->
+                        <svg class="tts-icon-on" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                            <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                        </svg>
+                    </button>
+                    <!-- SEND BUTTON: Paper plane / send icon -->
+                    <button class="action-btn send-btn" id="send-btn" title="Send message">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13" />
+                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                        </svg>
+                    </button>
+                    <button class="action-btn pause-btn" id="pause-btn" title="Pause" style="display: none;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="6" y="4" width="4" height="16" />
+                            <rect x="14" y="4" width="4" height="16" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="input-meta">
+                <span class="mode-label" id="mode-label">General Mode</span>
+                <span class="char-count" id="char-count"></span>
+            </div>
+        </footer>
+
+        <!-- ============================================================
+             SEARCH RESULTS WIDGET (Realtime mode)
+             Fixed panel on the right showing Tavily search data: query,
+             AI-synthesized answer, and source list. Toggle via header button.
+             ============================================================ -->
+        <aside class="search-results-widget glass-panel" id="search-results-widget" aria-hidden="true">
+            <div class="search-results-header">
+                <h3 class="search-results-title">Live search</h3>
+                <button class="search-results-close" id="search-results-close" title="Close"
+                    aria-label="Close search results">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+            </div>
+            <div class="search-results-query" id="search-results-query"></div>
+            <div class="search-results-answer" id="search-results-answer"></div>
+            <div class="search-results-list" id="search-results-list"></div>
+        </aside>
+
+        <!-- Terminal Output Panel -->
+        <aside class="terminal-widget glass-panel" id="terminal-widget" aria-hidden="true">
+            <div class="terminal-header">
+                <span class="terminal-title">⌨️ Terminal</span>
+                <button class="terminal-close" id="terminal-close" title="Close">✕</button>
+            </div>
+            <div class="terminal-status" id="terminal-status">
+                <span id="terminal-os-badge">Detecting OS...</span>
+                <span id="terminal-pw-badge">Checking Playwright...</span>
+            </div>
+            <div class="terminal-body" id="terminal-body">
+                <div class="terminal-prompt-row">
+                    <span class="terminal-prompt-symbol">$</span>
+                    <input type="text" id="terminal-input" class="terminal-input" placeholder="Enter command..." autocomplete="off" spellcheck="false" />
+                    <button class="terminal-run-btn" id="terminal-run-btn">Run</button>
+                </div>
+                <div class="terminal-output" id="terminal-output">
+                    <div class="terminal-line terminal-info">Ready. Type a command above or ask Natasha to run one.</div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- ============================================================
+         SCRIPT LOADING ORDER
+         orb.js MUST load first: it defines OrbRenderer and sets up
+         the WebGL canvas in #orb-container. script.js depends on it
+         and uses the orb for the background. Order matters because
+         script.js may reference OrbRenderer at load time.
+         ============================================================ -->
+    <script src="/static/orb.js"></script>
+    <script src="/static/script.js"></script>
+</body>
+
+</html>
