@@ -179,6 +179,17 @@
              different states (e.g. mic on vs off).
              ============================================================ -->
         <footer class="input-bar glass-panel">
+            <!-- ============================================================
+                 CONFIRM BAR (Dynamic Voice Timeout)
+                 ============================================================ -->
+            <div id="confirm-bar" class="confirm-bar hidden">
+                <span id="confirm-text" class="confirm-text">Auto-sending in 3s...</span>
+                <div class="confirm-actions">
+                    <button id="confirm-send-btn" class="confirm-btn primary">Send ↵</button>
+                    <button id="confirm-keep-talking-btn" class="confirm-btn secondary">Keep talking</button>
+                </div>
+            </div>
+            
             <div class="input-wrapper">
                 <textarea id="message-input" placeholder="Ask N.A.T. anything..." rows="1" maxlength="32000"></textarea>
                 <div class="input-actions">

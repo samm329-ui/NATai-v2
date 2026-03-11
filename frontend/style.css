@@ -746,6 +746,65 @@ textarea {
     transition: border-color var(--transition), box-shadow var(--transition);
 }
 
+/* ================================================================
+   CONFIRM BAR (Voice timeout UI)
+   ================================================================ */
+.confirm-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(124, 106, 239, 0.15);
+    border: 1px solid rgba(124, 106, 239, 0.3);
+    border-radius: 12px;
+    padding: 8px 14px;
+    margin-bottom: 10px;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.confirm-bar.hidden {
+    display: none;
+}
+
+.confirm-text {
+    font-size: 0.85rem;
+    color: var(--text);
+    font-weight: 500;
+}
+
+.confirm-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.confirm-btn {
+    padding: 6px 14px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    border-radius: 8px;
+    transition: all var(--transition);
+}
+
+.confirm-btn.primary {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+}
+
+.confirm-btn.primary:hover {
+    background: #6a57e3;
+    transform: translateY(-1px);
+}
+
+.confirm-btn.secondary {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.confirm-btn.secondary:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
 /* Focus ring: purple border + subtle outer glow when typing */
 .input-wrapper:focus-within {
     border-color: rgba(124, 106, 239, 0.35);
@@ -1087,6 +1146,7 @@ textarea {
     word-break: break-word;
     display: -webkit-box;
     -webkit-line-clamp: 4;
+    line-clamp: 4;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
@@ -1660,5 +1720,6 @@ textarea {
     .search-result-card .card-content {
         font-size: 0.72rem;
         -webkit-line-clamp: 3;
+        line-clamp: 3;
     }
 }

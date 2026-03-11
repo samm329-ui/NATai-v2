@@ -19,6 +19,7 @@ let isListening = false;
 let orb = null;
 let ttsPlayer = null;
 let recognitionTimeout = null;
+window.hasInteracted = false;
 
 const $ = id => document.getElementById(id);
 
@@ -46,6 +47,15 @@ const searchResultsList = $('search-results-list');
 const pauseBtn = $('pause-btn');
 
 let currentController = null;
+let wasListeningBeforeSend = false;
+
+// Confirm Bar Elements
+const confirmBar = $('confirm-bar');
+const confirmText = $('confirm-text');
+const confirmSendBtn = $('confirm-send-btn');
+const confirmKeepTalkingBtn = $('confirm-keep-talking-btn');
+let confirmCountdownInterval = null;
+let silenceTimeoutMode = 'none'; // 'short' or 'long'
 
 /* ================================================================
    EDGE TTS AUDIO PLAYER (from backend) - SIMPLE STREAMING
@@ -60,202 +70,114 @@ function getAudioContext() {
     return audioContext;
 }
 
+let ttsAudioQueue = [];
+let isTTSPlaying = false;
+
 async function playEdgeTTSAudio(base64Audio) {
     if (ttsPlayer && !ttsPlayer.enabled) return;
-    
+
+    // Add audio to queue rather than playing immediately
+    ttsAudioQueue.push(base64Audio);
+
+    // If not currently playing something, start processing the queue
+    if (!isTTSPlaying) {
+        processTTSQueue();
+    }
+}
+
+async function processTTSQueue() {
+    if (ttsAudioQueue.length === 0) {
+        isTTSPlaying = false;
+        if (ttsBtn) ttsBtn.classList.remove('tts-speaking');
+        if (orbContainer) orbContainer.classList.remove('speaking');
+        if (orb) orb.setActive(false);
+        return;
+    }
+
+    isTTSPlaying = true;
+    const base64Audio = ttsAudioQueue.shift();
+
+    // BUG 13 FIX: Prevent 'The AudioContext was not allowed to start' uncatchable constructor warning.
+    // If the user hasn't physically clicked the page yet, silently skip playing this audio chunk entirely.
+    if (!window.hasInteracted) {
+        console.log("[Edge TTS] Suppressed audio chunk because user hasn't interacted with the page yet.");
+        processTTSQueue();
+        return;
+    }
+
     try {
         const ctx = getAudioContext();
-        
+
         if (ctx.state === 'suspended') {
-            await ctx.resume();
+            try {
+                await ctx.resume();
+            } catch (e) {
+                console.warn("[Edge TTS] AudioContext blocked by browser autoplay policy. Waiting for user interaction.");
+            }
         }
-        
+
         const binaryString = atob(base64Audio);
         const bytes = new Uint8Array(binaryString.length);
         for (let i = 0; i < binaryString.length; i++) {
             bytes[i] = binaryString.charCodeAt(i);
         }
-        
+
         const audioBuffer = await ctx.decodeAudioData(bytes.buffer);
-        
-        if (currentSource) {
-            try {
-                currentSource.stop();
-            } catch(e) {}
-        }
-        
+
+        // No longer call currentSource.stop() here as we play sequentially
         const source = ctx.createBufferSource();
         source.buffer = audioBuffer;
         source.connect(ctx.destination);
         currentSource = source;
-        
+
         if (ttsBtn) ttsBtn.classList.add('tts-speaking');
         if (orbContainer) orbContainer.classList.add('speaking');
         if (orb) orb.setActive(true);
-        
+
         source.onended = () => {
             currentSource = null;
-            if (ttsBtn) ttsBtn.classList.remove('tts-speaking');
-            if (orbContainer) orbContainer.classList.remove('speaking');
-            if (orb) orb.setActive(false);
+            // Play the next chunk in the queue
+            processTTSQueue();
         };
-        
-        source.start(0);
-        console.log("[Edge TTS] Playing audio chunk");
-        
+
+        try {
+            source.start(0);
+            console.log("[Edge TTS] Playing audio chunk");
+        } catch (e) {
+            console.warn("[Edge TTS] Autoplay blocked playback. User interaction required.");
+        }
+
     } catch (e) {
         console.error("[Edge TTS] Error playing audio:", e);
+        // Process next even on error
+        processTTSQueue();
     }
 }
 
 /* ================================================================
-   BUFFERED NATIVE TTS ENGINE (fallback)
+   TTS PLAYER STUB (Tracks enabled state without breaking Edge TTS)
    ================================================================ */
-window.utterances = [];
-
 class TTSPlayer {
-    constructor() {
-        this.enabled = true;
-        this.buffer = '';
-        this.speaking = false;
-        this.availableVoices = [];
+    constructor() { this.enabled = true; }
+    stop() { stopAllTTS(); }
+}
 
-        if (window.speechSynthesis) {
-            window.speechSynthesis.onvoiceschanged = () => { 
-                this.availableVoices = window.speechSynthesis.getVoices();
-                console.log("[TTS] Voices loaded:", this.availableVoices.length);
-            };
-            // Try to load voices immediately (may not work on all browsers)
-            setTimeout(() => {
-                this.availableVoices = window.speechSynthesis.getVoices();
-                console.log("[TTS] Initial voices:", this.availableVoices.length);
-            }, 100);
-        }
-    }
+function stopAllTTS() {
+    window.speechSynthesis.cancel();
 
-    playText(textChunk) {
-        if (!this.enabled) {
-            console.log("[TTS] Disabled, skipping:", textChunk.substring(0, 30));
-            return;
-        }
-        this.buffer += textChunk;
+    // Clear audio queue
+    ttsAudioQueue = [];
+    isTTSPlaying = false;
 
-        let match;
-        while ((match = this.buffer.match(/([\s\S]*?[.!?\n]+(?:\s+|$))/)) !== null) {
-            const sentence = match[0];
-            this.buffer = this.buffer.slice(sentence.length);
-            this.speak(sentence.trim());
-        }
-    }
-
-    flush() {
-        if (!this.enabled) return;
-        const remaining = this.buffer.trim();
-        if (remaining) {
-            this.speak(remaining);
-            this.buffer = '';
-        }
-    }
-
-    speak(text) {
-        if (!text) return;
-        
-        // Ensure browser isn't locked in paused state before creating utterance
-        if (window.speechSynthesis.paused) {
-            window.speechSynthesis.resume();
-        }
-
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.volume = 1.0;
-        utterance.rate = window.ttsRateOffset || 1.1;
-        utterance.pitch = 1.0;
-
-        // Use pre-loaded voices or get fresh list
-        let voices = this.availableVoices.length > 0 ? this.availableVoices : window.speechSynthesis.getVoices();
-        
-        console.log("[TTS] Speaking:", text.substring(0, 50) + "...", "Voices available:", voices.length);
-        if (voices.length > 0) {
-            // Priority 1: Local Windows Zira or natively installed premium female
-            let selectedVoice = voices.find(v =>
-                (v.name.toLowerCase().includes('zira') || v.name.toLowerCase().includes('female')) && v.localService
-            );
-            // Priority 2: Any English local voice
-            if (!selectedVoice) {
-                selectedVoice = voices.find(v => v.lang.startsWith('en-') && v.localService);
-            }
-            // Priority 3: Fallback cleanly to whatever is first English
-            if (!selectedVoice) {
-                selectedVoice = voices.find(v => v.lang.startsWith('en-'));
-            }
-
-            if (selectedVoice) {
-                utterance.voice = selectedVoice;
-                console.log("Using Voice:", selectedVoice.name);
-            }
-        }
-
-        utterance.onstart = () => {
-            this.speaking = true;
-            console.log("[TTS] Started speaking");
-            if (ttsBtn) ttsBtn.classList.add('tts-speaking');
-            if (orbContainer) orbContainer.classList.add('speaking');
-            if (orb) orb.setActive(true);
-        };
-
-        utterance.onend = () => {
-            this.speaking = false;
-            console.log("[TTS] Finished speaking");
-            if (!window.speechSynthesis.speaking) {
-                if (ttsBtn) ttsBtn.classList.remove('tts-speaking');
-                if (orbContainer) orbContainer.classList.remove('speaking');
-                if (orb) orb.setActive(false);
-            }
-            window.utterances = window.utterances.filter(u => u !== utterance);
-        };
-
-        utterance.onerror = (e) => {
-            console.error("[TTS] Error:", e);
-            this.speaking = false;
-            window.utterances = window.utterances.filter(u => u !== utterance);
-            window.speechSynthesis.cancel();
-        };
-
-        window.utterances.push(utterance);
-        window.speechSynthesis.speak(utterance);
-    }
-
-    stop() {
-        window.speechSynthesis.cancel();
-        this.buffer = '';
-        this.speaking = false;
-        if (ttsBtn) ttsBtn.classList.remove('tts-speaking');
-        if (orbContainer) orbContainer.classList.remove('speaking');
-        if (orb) orb.setActive(false);
-    }
-
-    reset() {
-        this.stop();
-    }
-
-    unlock() {
-        if (window.speechSynthesis.paused) {
-            window.speechSynthesis.resume();
-        }
-        // Try to speak empty utterance to unlock AudioContext
+    if (currentSource) {
         try {
-            const u = new SpeechSynthesisUtterance('');
-            u.volume = 0;
-            window.speechSynthesis.speak(u);
-        } catch(e) {
-            console.log("[TTS] Unlock test:", e);
-        }
+            currentSource.stop();
+            currentSource = null;
+        } catch (e) { }
     }
-    
-    // Test TTS - call this from browser console to test
-    test() {
-        console.log("[TTS] Testing TTS... enabled:", this.enabled);
-        this.speak("Hello! This is a test of Natasha's voice.");
-    }
+    if (ttsBtn) ttsBtn.classList.remove('tts-speaking');
+    if (orbContainer) orbContainer.classList.remove('speaking');
+    if (orb) orb.setActive(false);
 }
 
 /* ================================================================
@@ -274,15 +196,76 @@ function init() {
     checkHealth();
     bindEvents();
     autoResizeInput();
+    initConfirmBarEvents();
+
+    function _setInteracted() {
+        window.hasInteracted = true;
+        ['click', 'keydown', 'touchstart'].forEach(evt => document.removeEventListener(evt, _setInteracted));
+    }
+    ['click', 'keydown', 'touchstart'].forEach(evt => document.addEventListener(evt, _setInteracted, { once: true }));
+
+    // The user requested the greeting to speak instantly on load, bypassing autoplay policies.
+    setTimeout(_speakWelcome, 1200);
+}
+
+let hasSpokenWelcome = false;
+
+function _speakWelcome() {
+    if (!hasSpokenWelcome) {
+        hasSpokenWelcome = true;
+        const greeting = _getGreetingText();
+        // Since we're trying to guarantee the first voice plays, call the backend TTS or native synth
+        if (ttsPlayer.enabled) {
+            // Wait slightly so the visual greeting aligns with the audio trigger
+            setTimeout(() => {
+                const welcomePayload = {
+                    text: greeting
+                };
+                fetch('/tts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(welcomePayload)
+                })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.audio) {
+                            playEdgeTTSAudio(data.audio);
+                        }
+                    })
+                    .catch(err => console.error("Could not fetch welcome greeting audio:", err));
+            }, 300);
+        }
+    }
+}
+
+function initConfirmBarEvents() {
+    if (confirmSendBtn) {
+        confirmSendBtn.addEventListener('click', () => {
+            hideConfirmBar(true);
+            sendMessage(messageInput.value);
+        });
+    }
+    if (confirmKeepTalkingBtn) {
+        confirmKeepTalkingBtn.addEventListener('click', () => {
+            hideConfirmBar();
+            startListening();
+        });
+    }
+}
+
+function _getGreetingText() {
+    const h = new Date().getHours();
+    if (h < 5) return 'Working late, Boss?';
+    if (h < 12) return 'Good morning, Boss.';
+    if (h < 17) return 'Good afternoon, Boss.';
+    if (h < 22) return 'Good evening, Boss.';
+    return 'Late night, Boss?';
 }
 
 function setGreeting() {
-    const h = new Date().getHours();
-    let g = 'Good evening, Boss.';
-    if (h < 12) g = 'Good morning, Boss.';
-    else if (h < 17) g = 'Good afternoon, Boss.';
-    else if (h >= 22) g = 'Late night, Boss?';
-    welcomeTitle.textContent = g;
+    if (welcomeTitle) {
+        welcomeTitle.textContent = _getGreetingText();
+    }
 }
 
 function initOrb() {
@@ -303,6 +286,63 @@ function initOrb() {
 let recognition = null;
 let silenceTimeout = null;
 
+function _isCompleteSentence(text) {
+    if (!text) return false;
+    const trimmed = text.trim();
+    if (trimmed.length < 3) return false;
+
+    // Ends with punctuation
+    if (/[.!?]$/.test(trimmed)) return true;
+
+    // Common command patterns that are usually complete
+    const lower = trimmed.toLowerCase();
+    if (lower.startsWith("open ") || lower.startsWith("play ") ||
+        lower.startsWith("run ") || lower.startsWith("search ")) {
+        if (trimmed.split(/\s+/).length >= 2) return true;
+    }
+
+    // Seems like a reasonable length question
+    if (lower.startsWith("what ") || lower.startsWith("how ") ||
+        lower.startsWith("who ") || lower.startsWith("where ") ||
+        lower.startsWith("why ")) {
+        if (trimmed.split(/\s+/).length >= 4) return true;
+    }
+
+    return false;
+}
+
+function showConfirmBar() {
+    if (!confirmBar) return;
+
+    // Don't show if already sending
+    if (isStreaming) return;
+
+    confirmBar.classList.remove('hidden');
+    stopListening(); // Pause listening while confirming
+
+    let timeRemaining = 3;
+    if (confirmText) confirmText.textContent = `Auto-sending in ${timeRemaining}s...`;
+
+    clearInterval(confirmCountdownInterval);
+    confirmCountdownInterval = setInterval(() => {
+        timeRemaining--;
+        if (timeRemaining > 0) {
+            if (confirmText) confirmText.textContent = `Auto-sending in ${timeRemaining}s...`;
+        } else {
+            hideConfirmBar(true);
+            sendMessage(messageInput.value);
+        }
+    }, 1000);
+}
+
+function hideConfirmBar(clearText = false) {
+    if (!confirmBar) return;
+    confirmBar.classList.add('hidden');
+    clearInterval(confirmCountdownInterval);
+    silenceTimeoutMode = 'none';
+    if (clearText && confirmText) confirmText.textContent = "";
+}
+
 function initSpeech() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -319,9 +359,12 @@ function initSpeech() {
 
         recognition.onresult = (event) => {
             // Echo Lock
-            if (isStreaming || window.speechSynthesis.speaking) return;
+            if (isStreaming || window.speechSynthesis.speaking || isTTSPlaying) return;
 
             clearTimeout(silenceTimeout);
+
+            // If they started speaking again, hide the confirm bar and cancel countdown
+            hideConfirmBar();
 
             const transcript = Array.from(event.results)
                 .map(result => result[0].transcript)
@@ -329,13 +372,16 @@ function initSpeech() {
 
             messageInput.value = transcript;
 
+            const isComplete = _isCompleteSentence(transcript);
+            const timeoutDuration = isComplete ? 1200 : 2500;
+            silenceTimeoutMode = isComplete ? 'short' : 'long';
+
             silenceTimeout = setTimeout(() => {
                 const finalTranscript = messageInput.value.trim();
                 if (finalTranscript && !isStreaming) {
-                    stopListening();
-                    sendMessage(finalTranscript);
+                    showConfirmBar();
                 }
-            }, 800);
+            }, timeoutDuration);
         };
 
         recognition.onerror = (e) => {
@@ -353,10 +399,8 @@ function initSpeech() {
     }
 }
 
-    async function startListening() {
+async function startListening() {
     if (isStreaming) return;
-    // Unlock TTS on voice input start (for browser autoplay policy)
-    if (ttsPlayer) ttsPlayer.unlock();
     if (recognition) {
         try {
             recognition.start();
@@ -446,11 +490,7 @@ function setMode(mode) {
 }
 
 function newChat() {
-    if (ttsPlayer) ttsPlayer.stop();
-    if (currentSource) {
-        try { currentSource.stop(); } catch(e) {}
-        currentSource = null;
-    }
+    stopAllTTS();
     sessionId = null;
     chatMessages.innerHTML = '';
     chatMessages.appendChild(createWelcome());
@@ -462,11 +502,7 @@ function newChat() {
 }
 
 function createWelcome() {
-    const h = new Date().getHours();
-    let g = 'Good evening, Boss.';
-    if (h < 12) g = 'Good morning, Boss.';
-    else if (h < 17) g = 'Good afternoon, Boss.';
-    else if (h >= 22) g = 'Late night, Boss?';
+    const greetingText = _getGreetingText();
 
     const div = document.createElement('div');
     div.className = 'welcome-screen';
@@ -475,7 +511,7 @@ function createWelcome() {
         <div class="welcome-icon">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
         </div>
-        <h2 class="welcome-title">${g}</h2>
+        <h2 class="welcome-title">${greetingText}</h2>
         <p class="welcome-sub">I am Natasha. How may I assist you today?</p>
         <div class="welcome-chips">
             <button class="chip" data-msg="Who are you?">Who are you?</button>
@@ -650,7 +686,7 @@ async function sendMessage(textOverride, isVoice = false) {
     if (!text || isStreaming) return;
 
     if (currentSource) {
-        try { currentSource.stop(); } catch(e) {}
+        try { currentSource.stop(); } catch (e) { }
         currentSource = null;
     }
     messageInput.value = '';
@@ -664,13 +700,17 @@ async function sendMessage(textOverride, isVoice = false) {
     sendBtn.disabled = true;
     pauseBtn.style.display = 'flex';
 
+    wasListeningBeforeSend = isListening || !confirmBar.classList.contains('hidden');
+    hideConfirmBar(true);
+    stopListening();
+
     // Unlock audio context for Edge TTS
     try {
         const ctx = getAudioContext();
         if (ctx.state === 'suspended') {
             await ctx.resume();
         }
-    } catch(e) {}
+    } catch (e) { }
 
     const endpoint = currentMode === 'realtime' ? '/chat/realtime/stream' : '/chat/stream';
     currentController = new AbortController();
@@ -772,6 +812,12 @@ async function sendMessage(textOverride, isVoice = false) {
         sendBtn.disabled = false;
         pauseBtn.style.display = 'none';
         currentController = null;
+
+        if (wasListeningBeforeSend) {
+            setTimeout(() => {
+                startListening();
+            }, 500);
+        }
     }
 }
 
@@ -779,15 +825,8 @@ function stopStreaming() {
     if (currentController) {
         currentController.abort();
     }
-    if (currentSource) {
-        try {
-            currentSource.stop();
-            currentSource = null;
-        } catch(e) {}
-    }
-    if (ttsBtn) ttsBtn.classList.remove('tts-speaking');
-    if (orbContainer) orbContainer.classList.remove('speaking');
-    if (orb) orb.setActive(false);
+
+    stopAllTTS();
 }
 
 document.addEventListener('DOMContentLoaded', init);
@@ -796,14 +835,14 @@ document.addEventListener('DOMContentLoaded', init);
    TERMINAL PANEL — UI Logic
    ================================================================ */
 
-const terminalWidget    = $('terminal-widget');
-const terminalClose     = $('terminal-close');
+const terminalWidget = $('terminal-widget');
+const terminalClose = $('terminal-close');
 const terminalToggleBtn = $('terminal-toggle-btn');
-const terminalInput     = $('terminal-input');
-const terminalRunBtn    = $('terminal-run-btn');
-const terminalOutput    = $('terminal-output');
-const terminalOsBadge   = $('terminal-os-badge');
-const terminalPwBadge   = $('terminal-pw-badge');
+const terminalInput = $('terminal-input');
+const terminalRunBtn = $('terminal-run-btn');
+const terminalOutput = $('terminal-output');
+const terminalOsBadge = $('terminal-os-badge');
+const terminalPwBadge = $('terminal-pw-badge');
 
 // ── Open/Close ─────────────────────────────────────────────────
 
@@ -830,7 +869,7 @@ if (terminalClose) terminalClose.addEventListener('click', closeTerminalPanel);
 
 async function loadTerminalStatus() {
     try {
-        const res  = await fetch(`${API}/terminal/status`);
+        const res = await fetch(`${API}/terminal/status`);
         const data = await res.json();
         if (terminalOsBadge) terminalOsBadge.textContent = `OS: ${data.os} (Python ${data.python_version})`;
         if (terminalPwBadge) {
@@ -859,7 +898,7 @@ async function runTerminalCommand(command) {
     termPrint(`$ ${command}`, 'terminal-cmd');
 
     try {
-        const res  = await fetch(`${API}/terminal/run`, {
+        const res = await fetch(`${API}/terminal/run`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ command })
