@@ -56,7 +56,10 @@ Supported actions:
 9. list_directory → list contents of a folder
    {"action": "list_directory", "path": "C:/Users/jishu/Projects"}
 
-10. chat          → everything else (questions, AI tasks, conversations)
+10. open_special  → open Windows specific GUI items (e.g. "my pc", "this pc", "control panel", "c drive", "d drive", "desktop", "downloads")
+    {"action": "open_special", "target": "my pc"}
+
+11. chat          → everything else (questions, AI tasks, conversations)
     {"action": "chat"}
 
 RULES:
@@ -64,7 +67,9 @@ RULES:
 - "search X on youtube" → web_search engine=youtube
 - "create folder called X" → create_folder
 - "run this: X" → run_terminal
-- "open my documents" → open_folder with Documents path
+- "open my documents" → open_special target="documents"
+- "open my pc" / "open this pc" → open_special target="my pc"
+- "open control panel" → open_special target="control panel"
 - Return ONLY raw JSON object. No markdown. No explanation.
 '''
 
@@ -74,6 +79,33 @@ class SmartActionEngine:
         self.local_mappings = {
             "Doctor Drift": "C:\\Users\\jishu\\DoctorDrift",
             "Protein Zone": "C:\\Users\\jishu\\ProteinZone",
+        }
+        
+        self.WINDOWS_SPECIAL_FOLDERS = {
+            "my pc": "shell:::{20D04FE0-3AEA-1069-A2D8-08002B30309D}",
+            "this pc": "shell:::{20D04FE0-3AEA-1069-A2D8-08002B30309D}",
+            "desktop": "%USERPROFILE%\\Desktop",
+            "downloads": "%USERPROFILE%\\Downloads",
+            "documents": "%USERPROFILE%\\Documents",
+            "pictures": "%USERPROFILE%\\Pictures",
+            "music": "%USERPROFILE%\\Music",
+            "videos": "%USERPROFILE%\\Videos",
+            "control panel": "control",
+            "recycle bin": "shell:::{645FF040-5081-101B-9F08-00AA002F954E}",
+            "c drive": "C:\\",
+            "d drive": "D:\\"
+        }
+
+        self.WINDOWS_APPS = {
+            "notepad": "notepad.exe",
+            "vs code": "code",
+            "vscode": "code",
+            "chrome": "chrome.exe",
+            "calculator": "calc.exe",
+            "task manager": "taskmgr.exe",
+            "paint": "mspaint.exe",
+            "explorer": "explorer.exe",
+            "settings": "ms-settings:"
         }
 
     def _classify_intent(self, user_message: str) -> dict:
@@ -95,12 +127,26 @@ class SmartActionEngine:
             print(f"[ActionEngine] Classification error: {e}")
         return None
 
-    def _resolve_local_path(self, target: str) -> str:
-        """Resolve user-defined local app names to real paths."""
+    def _resolve_path(self, target: str) -> str:
+        """Resolve user-defined local app names, special folders, and expand env vars."""
+        import os
+        target_lower = target.lower().strip()
+        
+        # 1. Check local mappings
         for key, path in self.local_mappings.items():
-            if key.lower() in target.lower() or target.lower() in key.lower():
-                return path
-        return target
+            if key.lower() in target_lower or target_lower in key.lower():
+                return os.path.expandvars(os.path.expanduser(path))
+                
+        # 2. Check special windows folders
+        if target_lower in self.WINDOWS_SPECIAL_FOLDERS:
+            return os.path.expandvars(os.path.expanduser(self.WINDOWS_SPECIAL_FOLDERS[target_lower]))
+            
+        # 3. Check known windows apps
+        if target_lower in self.WINDOWS_APPS:
+            return self.WINDOWS_APPS[target_lower]
+            
+        # 4. Expand variables on whatever is left
+        return os.path.expandvars(os.path.expanduser(target))
 
     def evaluate_and_execute(self, user_message: str):
         """Main entry point called by the streaming generator."""
@@ -116,7 +162,7 @@ class SmartActionEngine:
 
         if action == "open_web":
             url = data.get("target", "")
-            resolved = self._resolve_local_path(url)
+            resolved = self._resolve_path(url)
             if resolved != url:
                 result = terminal_service.open_app(resolved)
                 return f"Launching **{resolved}**..." if result["success"] else f"Failed: {result['message']}"
@@ -162,22 +208,46 @@ class SmartActionEngine:
 
         elif action == "open_folder":
             path = data.get("path", "")
-            result = terminal_service.open_path(path)
+            resolved_path = self._resolve_path(path)
+            result = terminal_service.open_path(resolved_path)
             return f"Opening folder: `{result['path']}`..." if result["success"] else f"Failed: {result['message']}"
 
         elif action == "open_file":
             path = data.get("path", "")
-            result = terminal_service.open_path(path)
+            resolved_path = self._resolve_path(path)
+            result = terminal_service.open_path(resolved_path)
             return f"Opening file: `{result['path']}`..." if result["success"] else f"Failed: {result['message']}"
 
         elif action == "open_app":
             app = data.get("app", "")
-            resolved = self._resolve_local_path(app)
+            resolved = self._resolve_path(app)
             if resolved != app:
-                result = terminal_service.open_path(resolved)
+                if resolved.endswith('.exe') or resolved == "control" or "ms-settings" in resolved or "code" in resolved:
+                     result = terminal_service.open_app(resolved)
+                else:
+                    result = terminal_service.open_path(resolved)
             else:
                 result = terminal_service.open_app(app)
             return f"Launching **{app}**..." if result["success"] else f"Failed to launch {app}: {result['message']}"
+
+        elif action == "open_special":
+            target = data.get("target", "")
+            resolved = self._resolve_path(target)
+            
+            # Special logic for explicit shell commands or executables vs. paths
+            if resolved.startswith("shell:::") or "ms-settings:" in resolved or resolved == "control":
+                # Need to use 'explorer' or 'start' for these on Windows
+                result = terminal_service.run(f"explorer {resolved}")
+                if result["success"]:
+                    return f"Opening **{target}**..."
+                else:
+                    return f"Failed to open {target}: {result.get('error', 'Unknown error')}"
+            elif resolved.endswith(".exe") or resolved == "code":
+                result = terminal_service.open_app(resolved)
+                return f"Launching **{target}**..." if result["success"] else f"Failed to open {target}: {result['message']}"
+            else:
+                result = terminal_service.open_path(resolved)
+                return f"Opening **{target}**..." if result["success"] else f"Failed to open {target}: {result['message']}"
 
         elif action == "list_directory":
             path = data.get("path", ".")
