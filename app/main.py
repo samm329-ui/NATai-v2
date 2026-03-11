@@ -102,18 +102,36 @@ async def _stream_generator(session_id: str, message: str, chat_type: str, use_t
             context = await asyncio.to_thread(vector_store_service.get_relevant_context, message)
             response_stream = groq_service.stream_chat_with_context(message, context, history)
 
+        tts_buffer = ""
+        
         async for chunk_text in response_stream:
             if chunk_text:
                 full_response += chunk_text
+                tts_buffer += chunk_text
                 yield f"data: {json.dumps({'chunk': chunk_text, 'done': False})}\n\n"
                 
-                if use_tts and chunk_text.strip():
-                    try:
-                        audio_b64 = tts_service.get_audio_base64(chunk_text.strip())
-                        if audio_b64:
-                            yield f"data: {json.dumps({'tts_audio': audio_b64})}\n\n"
-                    except Exception as e:
-                        print(f"[TTS Stream] Error: {e}")
+                if use_tts:
+                    # Check if the buffer ends with a sentence-ending punctuation or newline
+                    # This prevents calling TTS on incomplete words/sentences
+                    if any(tts_buffer.endswith(p) for p in [". ", "? ", "! ", ".\n", "?\n", "!\n", "\n\n"]):
+                        clean_sentence = tts_buffer.strip()
+                        if clean_sentence:
+                            try:
+                                audio_b64 = await tts_service.get_audio_base64(clean_sentence)
+                                if audio_b64:
+                                    yield f"data: {json.dumps({'tts_audio': audio_b64})}\n\n"
+                            except Exception as e:
+                                print(f"[TTS Stream] Error: {e}")
+                        tts_buffer = ""
+
+        # Flush any remaining text in the buffer after the stream completes
+        if use_tts and tts_buffer.strip():
+            try:
+                audio_b64 = await tts_service.get_audio_base64(tts_buffer.strip())
+                if audio_b64:
+                    yield f"data: {json.dumps({'tts_audio': audio_b64})}\n\n"
+            except Exception as e:
+                print(f"[TTS Stream] Error: {e}")
 
         try:
             extracted = await asyncio.to_thread(memory_service.extract_and_save_memory, message, full_response)
@@ -602,7 +620,7 @@ class TTSRequest(BaseModel):
 async def generate_tts(request: TTSRequest):
     """Generate Edge TTS audio for given text."""
     try:
-        audio_b64 = tts_service.get_audio_base64(request.text)
+        audio_b64 = await tts_service.get_audio_base64(request.text)
         if audio_b64:
             return {"success": True, "audio": audio_b64}
         return {"success": False, "error": "Failed to generate audio"}
