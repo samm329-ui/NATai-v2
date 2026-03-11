@@ -113,9 +113,46 @@ class TerminalService:
                 "cwd": working_dir or os.getcwd()
             }
 
+    def _normalize_path(self, path: str) -> str:
+        """
+        Auto-corrects paths to OneDrive equivalents if Windows PC Folder Backup is on.
+        For example: 'C:/Users/name/Desktop' -> 'C:/Users/name/OneDrive/Desktop'
+        """
+        expanded = os.path.expandvars(os.path.expanduser(path))
+        path_obj = Path(expanded).resolve()
+
+        # Typical Windows profile structure: C:\Users\Username
+        # Usually checking if it's currently looking at Desktop/Documents/Pictures
+        user_home = Path.home()
+        onedrive_path = user_home / "OneDrive"
+        
+        if onedrive_path.exists() and onedrive_path.is_dir():
+            target_folders = ["Desktop", "Documents", "Pictures"]
+            
+            for folder in target_folders:
+                standard_folder = user_home / folder
+                onedrive_folder = onedrive_path / folder
+                
+                # If the requested path is exactly or inside ONE of these folders...
+                try:
+                    # Check if standard folder is a parent of path_obj
+                    if standard_folder in path_obj.parents or path_obj == standard_folder:
+                        # But make sure the OneDrive equivalent actually exists before rerouting
+                        if onedrive_folder.exists():
+                            # Rebuild the path substituting the base folder
+                            rel_path = path_obj.relative_to(standard_folder)
+                            new_path = onedrive_folder / rel_path
+                            print(f"[Terminal] Auto-routed OneDrive path: {new_path}")
+                            return str(new_path)
+                except ValueError:
+                    # relative_to throws ValueError if it's not a subpath, which is fine, just continue
+                    pass
+
+        return str(path_obj)
+
     def create_folder(self, path: str) -> dict:
         """Create a folder (and all parents) at the given path."""
-        expanded = os.path.expandvars(os.path.expanduser(path))
+        expanded = self._normalize_path(path)
         try:
             Path(expanded).mkdir(parents=True, exist_ok=True)
             print(f"[Terminal] Created folder: {expanded}")
@@ -125,7 +162,7 @@ class TerminalService:
 
     def create_file(self, path: str, content: str = "") -> dict:
         """Create a file with optional content."""
-        expanded = os.path.expandvars(os.path.expanduser(path))
+        expanded = self._normalize_path(path)
         try:
             p = Path(expanded)
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -137,7 +174,7 @@ class TerminalService:
 
     def list_directory(self, path: str = ".") -> dict:
         """List contents of a directory."""
-        expanded = os.path.expandvars(os.path.expanduser(path))
+        expanded = self._normalize_path(path)
         try:
             p = Path(expanded)
             if not p.exists():
