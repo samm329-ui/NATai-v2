@@ -27,17 +27,14 @@ class TTSService:
         except Exception as e:
             print(f"[Edge TTS Stream] Error: {e}")
 
-    def get_audio_base64(self, text: str) -> str:
+    async def get_audio_base64(self, text: str) -> str:
         """Generate full audio and return as single base64 string"""
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as f:
                 temp_file = f.name
             
-            async def generate():
-                communicate = edge_tts.Communicate(text, self.voice, rate=self.rate, volume=self.volume)
-                await communicate.save(temp_file)
-            
-            asyncio.run(generate())
+            communicate = edge_tts.Communicate(text, self.voice, rate=self.rate, volume=self.volume)
+            await communicate.save(temp_file)
             
             with open(temp_file, 'rb') as f:
                 audio_data = f.read()
