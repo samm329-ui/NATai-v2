@@ -71,6 +71,31 @@ That's it. The server hosts both the API and the frontend on port 8000.
 
 ## Features
 
+### 🤖 Smart Action Engine
+- **Intelligent Intent Classification**: Automatically detects when you want to perform actions vs. just chat
+- Every message is analyzed by Groq LLM to determine if it's a command or a conversation
+- Routes to the appropriate service: terminal, browser, file system, or chat
+
+### 💻 Terminal Control
+- Run shell/terminal commands directly from chat
+- Create, list, and open folders and files
+- Open folders in OS file explorer
+- OneDrive path auto-correction on Windows
+- Safety: Blocks dangerous commands (rm -rf, format, etc.)
+
+### 🌐 Browser Automation
+- Open URLs in your default browser
+- Search the web (Google, YouTube, GitHub, Bing)
+- Full Playwright integration for advanced automation
+- Take screenshots of webpages
+- Fetch page content for AI analysis
+
+### 📱 App Launching
+- Launch installed applications by name
+- Open special Windows locations (My PC, Control Panel, Desktop, Downloads, etc.)
+- Open files with their default application
+- Custom app mappings for frequently used projects
+
 ### Chat Modes
 
 - **General Mode**: Pure LLM responses using Groq AI. Uses your learning data and conversation history as context. No internet access.
@@ -151,16 +176,17 @@ User (Browser)
 +--------------------------------------------------+
 |  FastAPI Application  (app/main.py)              |
 |  - CORS middleware                               |
+|  - Action Engine (intent classification)        |
 |  - _stream_generator (SSE + inline TTS)          |
 +--------------------------------------------------+
     |                           |
     v                           v
 +------------------+   +------------------------+
-|  ChatService     |   |  TTS Thread Pool       |
-|  (chat_service)  |   |  (4 workers, edge-tts) |
-|  - Sessions      |   +------------------------+
-|  - History       |
-|  - Disk I/O      |
+|  ChatService    |   |  TTS Thread Pool       |
+|  (chat_service) |   |  (4 workers, edge-tts) |
+|  - Sessions     |   +------------------------+
+|  - History      |
+|  - ActionEngine |
 +------------------+
     |
     v
@@ -173,11 +199,20 @@ User (Browser)
     |
     v
 +------------------+   +------------------------+
-| IntelligenceServ |   |  VectorStoreService   |
-| (intelligence)  |   |  (vector_store)       |
-| - Company       |   |  - FAISS index        |
-|   analysis      |   |  - HuggingFace embeds |
-+------------------+   +------------------------+
+| IntelligenceServ |   |  TerminalBrowserServ  |
+| (intelligence)  |   |  (terminal_browser)    |
+| - Company       |   |  - Terminal commands  |
+|   analysis      |   |  - Browser automation |
++------------------+   |  - File operations    |
+    |                 |  - App launching       |
+    v                 +------------------------+
++------------------+
+| VectorStoreService|
+|  (vector_store)  |
+|  - FAISS index   |
+|  - HuggingFace   |
+|    embeddings    |
++------------------+
 ```
 
 ---
@@ -202,8 +237,11 @@ NATai/
 │   │   ├── groq_service.py       # General chat with Groq
 │   │   ├── realtime_service.py   # Realtime chat with web search
 │   │   ├── intelligence_service.py  # Company/industry analysis
-│   │   ├── vector_store.py      # FAISS vector index
-│   │   └── memory_service.py     # Persistent memory
+│   │   ├── vector_store.py       # FAISS vector index
+│   │   ├── memory_service.py     # Persistent memory
+│   │   ├── action_engine.py      # Smart action classification
+│   │   ├── terminal_browser_service.py  # Terminal & browser control
+│   │   └── tts_service.py         # Text-to-speech
 │   └── utils/
 │       ├── __init__.py
 │       ├── retry.py             # Retry with exponential backoff
