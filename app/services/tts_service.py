@@ -13,7 +13,8 @@ import asyncio
 
 class TTSService:
     def __init__(self):
-        self.voice = "en-US-AriaNeural"
+        # JennyNeural - Warm, friendly voice similar to Alexa
+        self.voice = "en-US-JennyNeural"
         self.rate = "+0%"
         self.volume = "+0%"
 

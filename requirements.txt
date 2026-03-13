@@ -1,20 +1,37 @@
+# Core framework
 fastapi
 uvicorn[standard]
+python-multipart
+
+# LLM & AI
 langchain
 langchain-groq
 langchain-community
 langchain-core
+langchain-huggingface
+groq
+
+# Vector store & embeddings
 sentence-transformers
 faiss-cpu
+numpy
+
+# Web search & data
+tavily-python
+requests
+
+# TTS
+edge-tts
+
+# Utilities
 python-dotenv
 pydantic
-numpy
-torch
-transformers
-requests
 rich
-tavily-python
-cohere
-langchain-huggingface
-edge-tts
-playwright
+
+# Desktop control (keyboard + mouse)
+pyautogui
+pyperclip
+pygetwindow
+
+# Optional: advanced browser automation
+# playwright
