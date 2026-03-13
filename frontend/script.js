@@ -953,3 +953,308 @@ document.addEventListener('natasha:action-result', (e) => {
     openTerminalPanel();
     termPrint(e.detail.replace(/\*\*/g, '').replace(/`/g, ''), 'terminal-ok');
 });
+
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ACTIVITY OVERLAY  — Perplexity-style live action popup
+//  Connects to /activity/stream SSE. Shows what Natasha is doing in real-time.
+// ══════════════════════════════════════════════════════════════════════════
+
+const activityOverlay = $('activity-overlay');
+const activitySteps   = $('activity-steps');
+const activityClose   = $('activity-close');
+
+let _actSSE       = null;
+let _actTimer     = null;
+const MAX_STEPS   = 30;
+
+function _connectActivityStream() {
+    if (_actSSE) return;
+    try {
+        _actSSE = new EventSource(`${API}/activity/stream`);
+        _actSSE.onmessage = (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                if (data.heartbeat) return;
+                if (data.step) _showActivityStep(data.step);
+            } catch (_) {}
+        };
+        _actSSE.onerror = () => {
+            _actSSE?.close();
+            _actSSE = null;
+            setTimeout(_connectActivityStream, 3000);
+        };
+        console.log('[Activity] SSE connected');
+    } catch (e) {
+        console.warn('[Activity] connect failed:', e);
+    }
+}
+
+function _showActivityStep(step) {
+    if (!step || step.includes('heartbeat')) return;
+
+    // Show overlay
+    activityOverlay?.classList.remove('hidden');
+    clearTimeout(_actTimer);
+
+    // Remove 'latest' highlight from previous step
+    activitySteps?.querySelectorAll('.activity-step.latest')
+        .forEach(el => el.classList.remove('latest'));
+
+    // Add new step
+    const div = document.createElement('div');
+    div.className = 'activity-step latest';
+    div.textContent = step;
+    activitySteps?.appendChild(div);
+
+    // Trim old steps
+    while (activitySteps && activitySteps.children.length > MAX_STEPS) {
+        activitySteps.removeChild(activitySteps.firstChild);
+    }
+    if (activitySteps) activitySteps.scrollTop = activitySteps.scrollHeight;
+
+    // Auto-hide 5s after last step
+    _actTimer = setTimeout(() => {
+        activityOverlay?.classList.add('hidden');
+    }, 5000);
+}
+
+function _clearActivitySteps() {
+    if (activitySteps) activitySteps.innerHTML = '';
+}
+
+activityClose?.addEventListener('click', () => {
+    activityOverlay?.classList.add('hidden');
+    _clearActivitySteps();
+});
+
+// Connect after page loads
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(_connectActivityStream, 1500);
+});
+
+
+// ══════════════════════════════════════════════════════════════════════════
+//  DESKTOP CONTROL PANEL  — Keyboard + Mouse manual control
+// ══════════════════════════════════════════════════════════════════════════
+
+const desktopPanel      = $('desktop-panel');
+const desktopPanelClose = $('desktop-panel-close');
+const desktopStatusMsg  = $('desktop-status-msg');
+const kbText            = $('kb-text');
+const kbDelay           = $('kb-delay');
+const kbTypeBtn         = $('kb-type-btn');
+const mouseXInput       = $('mouse-x');
+const mouseYInput       = $('mouse-y');
+const mouseMoveBtn      = $('mouse-move-btn');
+const mouseGetPosBtn    = $('mouse-get-pos-btn');
+const mousePosDisplay   = $('mouse-pos-display');
+
+// ── Tab switching ───────────────────────────────────────────────
+document.querySelectorAll('.dtab').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.dtab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.dtab-content').forEach(c => c.classList.add('hidden'));
+        $(`dtab-${tab}`)?.classList.remove('hidden');
+    });
+});
+
+// ── Panel open/close ────────────────────────────────────────────
+function openDesktopPanel() {
+    desktopPanel?.classList.remove('hidden');
+    $('desktop-toggle-btn')?.classList.add('active');
+}
+function closeDesktopPanel() {
+    desktopPanel?.classList.add('hidden');
+    $('desktop-toggle-btn')?.classList.remove('active');
+}
+
+$('desktop-toggle-btn')?.addEventListener('click', () => {
+    desktopPanel?.classList.contains('hidden') ? openDesktopPanel() : closeDesktopPanel();
+});
+desktopPanelClose?.addEventListener('click', closeDesktopPanel);
+
+// ── Status display ──────────────────────────────────────────────
+function _deskStatus(msg, isError = false) {
+    if (!desktopStatusMsg) return;
+    desktopStatusMsg.style.color = isError ? '#f87171' : '#4ade80';
+    desktopStatusMsg.textContent = msg;
+    setTimeout(() => { if (desktopStatusMsg) desktopStatusMsg.textContent = ''; }, 3500);
+}
+
+// ── API helpers ─────────────────────────────────────────────────
+async function _apiPost(endpoint, body) {
+    const res = await fetch(`${API}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    return res.json();
+}
+
+async function _apiGet(endpoint) {
+    const res = await fetch(`${API}${endpoint}`);
+    return res.json();
+}
+
+// ── Keyboard: Type text ─────────────────────────────────────────
+kbTypeBtn?.addEventListener('click', async () => {
+    const text  = kbText?.value?.trim();
+    const delay = parseFloat(kbDelay?.value || '2');
+    if (!text) { _deskStatus('Enter some text first', true); return; }
+
+    kbTypeBtn.disabled = true;
+    kbTypeBtn.textContent = `⌨️ Starting in ${delay}s...`;
+    _deskStatus(`Click your target window! Typing in ${delay}s...`);
+
+    try {
+        const data = await _apiPost('/keyboard/type', { text, delay, interval: 0.02 });
+        if (data.success) {
+            _deskStatus(`✓ Typed ${data.chars} characters`);
+            if (kbText) kbText.value = '';
+        } else {
+            _deskStatus(data.message || 'Failed', true);
+        }
+    } catch (e) {
+        _deskStatus('Network error', true);
+    } finally {
+        kbTypeBtn.disabled = false;
+        kbTypeBtn.textContent = '⌨️ Type Now';
+    }
+});
+
+// ── Keyboard: Shortcuts ─────────────────────────────────────────
+document.querySelectorAll('.kb-sc').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const keys = btn.dataset.keys?.split(',');
+        if (!keys) return;
+        try {
+            const data = await _apiPost('/keyboard/hotkey', { keys });
+            _deskStatus(data.success ? `✓ ${btn.textContent}` : (data.message || 'Failed'), !data.success);
+        } catch (e) {
+            _deskStatus('Error', true);
+        }
+    });
+});
+
+// ── Keyboard: Single keys ───────────────────────────────────────
+document.querySelectorAll('.kb-key').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const key = btn.dataset.key;
+        if (!key) return;
+        try {
+            const data = await _apiPost('/keyboard/press', { key });
+            _deskStatus(data.success ? `✓ ${btn.textContent}` : (data.message || 'Failed'), !data.success);
+        } catch (e) {
+            _deskStatus('Error', true);
+        }
+    });
+});
+
+// ── Mouse: Move ─────────────────────────────────────────────────
+mouseMoveBtn?.addEventListener('click', async () => {
+    const x = parseInt(mouseXInput?.value);
+    const y = parseInt(mouseYInput?.value);
+    if (isNaN(x) || isNaN(y)) { _deskStatus('Enter X and Y coordinates', true); return; }
+    try {
+        const data = await _apiPost('/mouse/move', { x, y });
+        _deskStatus(data.success ? `✓ Mouse at (${x}, ${y})` : (data.message || 'Failed'), !data.success);
+    } catch (e) {
+        _deskStatus('Error', true);
+    }
+});
+
+// ── Mouse: Click buttons ────────────────────────────────────────
+document.querySelectorAll('.mouse-click-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const button = btn.dataset.button || 'left';
+        try {
+            const data = await _apiPost('/mouse/click', { button, double: false });
+            _deskStatus(data.success ? `✓ ${btn.textContent}` : (data.message || 'Failed'), !data.success);
+        } catch (e) {
+            _deskStatus('Error', true);
+        }
+    });
+});
+
+document.querySelector('.mouse-dbl-btn')?.addEventListener('click', async () => {
+    try {
+        const data = await _apiPost('/mouse/click', { button: 'left', double: true });
+        _deskStatus(data.success ? '✓ Double clicked' : (data.message || 'Failed'), !data.success);
+    } catch (e) {
+        _deskStatus('Error', true);
+    }
+});
+
+// ── Mouse: Scroll buttons ───────────────────────────────────────
+document.querySelectorAll('.mouse-scroll-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const amount = parseInt(btn.dataset.amount || '5');
+        try {
+            const data = await _apiPost('/mouse/scroll', { amount });
+            _deskStatus(data.success ? `✓ ${btn.textContent}` : (data.message || 'Failed'), !data.success);
+        } catch (e) {
+            _deskStatus('Error', true);
+        }
+    });
+});
+
+// ── Mouse: Get position ─────────────────────────────────────────
+mouseGetPosBtn?.addEventListener('click', async () => {
+    try {
+        const data = await _apiGet('/mouse/position');
+        if (data.success && mousePosDisplay) {
+            mousePosDisplay.textContent = `X: ${data.x}  Y: ${data.y}`;
+            _deskStatus(`Position: (${data.x}, ${data.y})`);
+        }
+    } catch (e) {
+        _deskStatus('Error getting position', true);
+    }
+});
+
+// ── Auto-open desktop panel when Natasha uses keyboard/mouse ────
+document.addEventListener('natasha:type-text', () => openDesktopPanel());
+
+
+// ══════════════════════════════════════════════════════════════════════════
+//  UPGRADED GREET  — uses /greet endpoint for time-aware Edge TTS greeting
+// ══════════════════════════════════════════════════════════════════════════
+
+(function _upgradeGreet() {
+    // Replace the old _speakWelcome with one that uses /greet
+    let _greetDone = false;
+
+    function _doGreet() {
+        if (_greetDone) return;
+        _greetDone = true;
+
+        fetch(`${API}/greet`)
+            .then(r => r.json())
+            .then(data => {
+                // Update welcome title
+                if (welcomeTitle && data.greeting) {
+                    welcomeTitle.textContent = data.greeting.replace(', Boss.','').replace(', Boss?','');
+                }
+                // Play Edge TTS greeting audio
+                if (data.audio && ttsPlayer && ttsPlayer.enabled) {
+                    playEdgeTTSAudio(data.audio);
+                }
+            })
+            .catch(() => {
+                // Fallback to local greeting text
+                if (welcomeTitle) welcomeTitle.textContent = _getGreetingText();
+            });
+    }
+
+    // Fire on first user interaction (bypasses browser autoplay policy)
+    ['click', 'keydown', 'touchstart'].forEach(evt => {
+        document.addEventListener(evt, () => {
+            setTimeout(_doGreet, 300);
+        }, { once: true });
+    });
+
+    // Also set title text immediately (no audio until interaction)
+    if (welcomeTitle) welcomeTitle.textContent = _getGreetingText();
+})();
