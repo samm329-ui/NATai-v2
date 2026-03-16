@@ -1219,52 +1219,10 @@ document.addEventListener('natasha:type-text', () => openDesktopPanel());
 
 
 // ══════════════════════════════════════════════════════════════════════════
-//  WIFI SENSING PANEL — Presence Detection Visualization
+//  WIFI SENSING PANEL — DISABLED (Feature Removed)
 // ══════════════════════════════════════════════════════════════════════════
 
-const wifiPanel        = $('wifi-panel');
-const wifiPanelClose   = $('wifi-panel-close');
-const wifiToggleBtn    = $('wifi-toggle-btn');
-const wifiStatusBadge  = $('wifi-status-badge');
-const wifiViz          = $('wifi-viz');
-const wifiCalibrating = $('wifi-calibrating');
-const wifiMetrics     = $('wifi-metrics');
-const wifiConfidence  = $('wifi-confidence');
-const wifiChart       = $('wifi-chart');
-const wifiLogContent  = $('wifi-log-content');
-const wifiSparkline   = $('wifi-sparkline');
-const wifiHeatmap     = $('wifi-heatmap');
-
-// 3D Map integration variables
-const wifi3dToggle    = $('wifi-3d-toggle');
-const wifi2dContainer = $('wifi-2d-container');
-const wifi3dContainer = $('wifi-3d-container');
-const wifi3dFrame     = $('wifi-3d-frame');
-let is3dMode = false;
-
-let wifiSensing = false;
-let wifiSSE = null;
-let chartData = [];
-let rssiHistory = [];
-const maxChartPoints = 30;
-const maxRssiHistory = 60;
-let signalFieldData = [];
-
-// ── Toggle 3D Mode ──────────────────────────────────────────────────
-wifi3dToggle?.addEventListener('click', () => {
-    is3dMode = !is3dMode;
-    if (is3dMode) {
-        wifi2dContainer.classList.add('hidden');
-        wifi3dContainer.classList.remove('hidden');
-        wifi3dToggle.textContent = 'View 2D Mode';
-        wifi3dToggle.classList.add('stop'); // use red style for active
-    } else {
-        wifi2dContainer.classList.remove('hidden');
-        wifi3dContainer.classList.add('hidden');
-        wifi3dToggle.textContent = 'View 3D Mode';
-        wifi3dToggle.classList.remove('stop');
-    }
-});
+// WiFi sensing feature has been removed
 
 // ── Panel open/close ───────────────────────────────────────────────
 function openWifiPanel() {
