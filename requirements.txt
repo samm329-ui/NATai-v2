@@ -33,5 +33,5 @@ pyautogui
 pyperclip
 pygetwindow
 
-# Optional: advanced browser automation
-# playwright
+# Browser automation
+playwright
