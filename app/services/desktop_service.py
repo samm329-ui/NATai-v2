@@ -37,9 +37,90 @@ import base64
 import io
 import subprocess
 import shutil
+import threading
 from typing import Optional, Tuple
+import urllib.parse
 
 OS = platform.system()
+
+_scroll_thread = None
+_scroll_running = False
+
+
+def start_scroll_loop(speed: str = "normal"):
+    global _scroll_thread, _scroll_running
+    stop_scroll_loop()
+    
+    speeds = {"slow": 0.4, "normal": 0.2, "fast": 0.1}
+    interval = speeds.get(speed, 0.2)
+    
+    def scroll_loop():
+        global _scroll_running
+        _scroll_running = True
+        try:
+            pg = _pg()
+            while _scroll_running:
+                pg.scroll(-3)
+                time.sleep(interval)
+        except Exception:
+            pass
+    
+    _scroll_thread = threading.Thread(target=scroll_loop, daemon=True)
+    _scroll_thread.start()
+
+
+def stop_scroll_loop():
+    global _scroll_running, _scroll_thread
+    _scroll_running = False
+    if _scroll_thread and _scroll_thread.is_alive():
+        _scroll_thread.join(timeout=1.0)
+    _scroll_thread = None
+
+
+def smart_search_in_browser(query: str, engine: str = "google") -> dict:
+    """Smart search: Ctrl+L, paste URL, Enter (works on any tab)."""
+    bases = {
+        "google": "https://www.google.com/search?q=",
+        "youtube": "https://www.youtube.com/results?search_query=",
+        "github": "https://github.com/search?q=",
+        "bing": "https://www.bing.com/search?q="
+    }
+    url = bases.get(engine, bases["google"]) + urllib.parse.quote_plus(query)
+    
+    try:
+        pg = _pg()
+        
+        # Copy URL to clipboard
+        try:
+            import pyperclip
+            pyperclip.copy(url)
+        except ImportError:
+            if OS == "Windows":
+                subprocess.run("clip", input=url.encode("utf-16"), shell=True, check=True)
+            else:
+                return {"success": False, "message": "Clipboard not available"}
+        
+        # Focus address bar with Ctrl+L
+        pg.hotkey("ctrl", "l")
+        time.sleep(0.3)
+        
+        # Paste URL
+        if OS == "Darwin":
+            pg.hotkey("command", "v")
+        else:
+            pg.hotkey("ctrl", "v")
+        time.sleep(0.2)
+        
+        # Press Enter
+        pg.press("enter")
+        
+        print(f"[SmartSearch] Searched: {query} on {engine}")
+        return {"success": True, "query": query, "engine": engine}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+scroll_thread = _scroll_thread
 
 # ── Safe import ────────────────────────────────────────────────────────────
 
@@ -142,6 +223,27 @@ class KeyboardController:
         except Exception as e:
             return {"success": False, "message": str(e)}
 
+    def focus_addressbar_and_search(self, url: str) -> dict:
+        """The smart search: focus browser address bar → type URL → Enter. Works on any already-open browser window/tab."""
+        try:
+            pg = _pg()
+            time.sleep(0.3)
+            if OS == "Darwin":
+                pg.hotkey("command", "l")
+            else:
+                pg.hotkey("ctrl", "l")
+            time.sleep(0.4)
+            pg.hotkey("ctrl", "a")
+            time.sleep(0.1)
+            result = self._clipboard_paste(url)
+            if not result["success"]:
+                return result
+            time.sleep(0.2)
+            pg.press("enter")
+            return {"success": True, "url": url, "method": "addressbar_type"}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
     def get_status(self) -> dict:
         ok = self.is_available()
         clip_ok = False
@@ -166,6 +268,8 @@ class MouseController:
     """Controls the mouse cursor — move, click, scroll, drag."""
 
     MOVE_DURATION = 0.3   # seconds for smooth mouse movement
+    _scroll_thread = None
+    _scroll_stop = threading.Event()
 
     def is_available(self) -> bool:
         try:
@@ -253,6 +357,49 @@ class MouseController:
         except Exception as e:
             return {"success": False, "message": str(e)}
 
+    def scroll_n_times(self, count: int, direction: str = "down", interval: float = 0.8) -> dict:
+        """Scroll exactly N times then stop. Voice command: 'scroll down 5 times'"""
+        try:
+            pg = _pg()
+            amount = -3 if direction == "down" else 3
+            for i in range(count):
+                pg.scroll(amount)
+                time.sleep(interval)
+            return {"success": True, "scrolled": count, "direction": direction}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
+    def start_continuous_scroll(self, direction: str = "down", speed: str = "slow") -> dict:
+        """Start scrolling continuously. Stop with stop_scroll(). Voice: 'scroll slowly' then 'stop'"""
+        if self._scroll_thread and self._scroll_thread.is_alive():
+            return {"success": False, "message": "Already scrolling. Say 'stop' first."}
+        
+        self._scroll_stop.clear()
+        speeds = {"slow": 1.2, "medium": 0.6, "fast": 0.2}
+        interval = speeds.get(speed, 1.2)
+        amount = -3 if direction == "down" else 3
+        
+        def _scroll_loop():
+            try:
+                pg = _pg()
+                while not self._scroll_stop.is_set():
+                    pg.scroll(amount)
+                    time.sleep(interval)
+            except Exception:
+                pass
+        
+        self._scroll_thread = threading.Thread(target=_scroll_loop, daemon=True)
+        self._scroll_thread.start()
+        return {"success": True, "direction": direction, "speed": speed, "status": "scrolling"}
+
+    def stop_scroll(self) -> dict:
+        """Stop any ongoing continuous scroll."""
+        self._scroll_stop.set()
+        return {"success": True, "status": "stopped"}
+
+    def is_scrolling(self) -> bool:
+        return bool(self._scroll_thread and self._scroll_thread.is_alive() and not self._scroll_stop.is_set())
+
     def move_relative(self, dx: int, dy: int) -> dict:
         """Move mouse relative to current position."""
         try:
@@ -333,8 +480,8 @@ def desktop_status() -> dict:
     size = mouse_ctrl.get_screen_size() if available else {}
     return {
         "available": available,
-        "keyboard": keyboard_ctrl.get_status(),
-        "screen": size,
         "platform": OS,
-        "install_cmd": "pip install pyautogui pyperclip pygetwindow" if not available else "installed"
+        "scrolling": mouse_ctrl.is_scrolling(),
+        "screen": size,
+        "install_cmd": "pip install pyautogui pyperclip" if not available else "installed"
     }

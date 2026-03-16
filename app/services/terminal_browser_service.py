@@ -236,7 +236,7 @@ class BrowserService:
         try:
             import playwright
             self._playwright_available = True
-            print("[Browser] Playwright is available ✓")
+            print("[Browser] Playwright is available")
         except ImportError:
             self._playwright_available = False
             print("[Browser] Playwright not installed — using webbrowser fallback.")
