@@ -1,7 +1,6 @@
 """
-N.A.T. AI Assistant v5 — FastAPI Backend
-Upgraded with: desktop control, browser detection, activity popup, file writing,
-smart search, scroll control, WiFi sensing, mini widget
+N.A.T. AI Assistant v4 — FastAPI Backend
+Upgraded with: desktop control, browser detection, activity popup, file writing
 """
 import asyncio, json, os, requests, queue as _queue
 from datetime import datetime
@@ -23,12 +22,11 @@ from app.services.realtime_service import realtime_service
 from app.services.intelligence_service import intelligence_service
 from app.services.memory_service import memory_service
 from app.services.action_engine import action_engine, register_activity_callback
-from app.services.terminal_browser_service import terminal_service, browser_service as terminal_browser_service
+from app.services.terminal_browser_service import terminal_service, browser_service
 from app.services.filler_service import get_filler_for_message, get_typing_filler, is_question, is_statement_or_command
 from app.services.tts_service import tts_service
 from app.services.browser_detect import browser_store
 from app.services.desktop_service import keyboard_ctrl, mouse_ctrl, screen_ctrl, desktop_status
-from app.services.browser_automation_service import browser_service as playwright_browser
 from app.utils.time_info import get_current_datetime
 
 startup_time = datetime.now()
@@ -42,35 +40,27 @@ def _activity_push(msg: str):
 
 register_activity_callback(_activity_push)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("\n" + "="*70)
-    print("  N.A.T. AI Assistant v5 — Natasha")
-    print("  Smart Search + Browser Automation + Desktop Control")
-    print("="*70)
-    print(f"  Model:        {config.GROQ_MODEL}")
-    print(f"  Groq API:     {'✓' if groq_service.is_available() else '✗ not configured'}")
-    print(f"  Web Search:   {'✓' if getattr(config,'TAVILY_API_KEY',None) else '✗ not configured'}")
-    print(f"  Desktop:      {'✓ pyautogui' if keyboard_ctrl.is_available() else '✗ pip install pyautogui'}")
-    print(f"  Learning:     {config.LEARNING_DATA_PATH}")
-    print("="*70 + "\n")
+    print("\n" + "="*55)
+    print("  N.A.T. AI Assistant v4 — Natasha")
+    print("  Desktop Control + Browser Detection + Activity Feed")
+    print("="*55)
+    print(f"  Model:       {config.GROQ_MODEL}")
+    print(f"  Groq API:    {'✓' if groq_service.is_available() else '✗ not configured'}")
+    print(f"  Web Search:  {'✓' if getattr(config,'TAVILY_API_KEY',None) else '✗ not configured'}")
+    print(f"  Desktop:     {'✓ pyautogui' if keyboard_ctrl.is_available() else '✗ pip install pyautogui'}")
+    print(f"  Learning:    {config.LEARNING_DATA_PATH}")
+    print("="*55 + "\n")
     yield
-    print("\n[Natasha] Shutdown complete")
+    print("\n[Natasha] Shutting down...")
 
 
-app = FastAPI(title="N.A.T. v5", version="5.0.0", lifespan=lifespan)
+app = FastAPI(title="N.A.T. v4", version="4.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
-
-# Mount RuView UI
-RUVIEW_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ruview_ui")
-if os.path.exists(RUVIEW_DIR):
-    app.mount("/ruview", StaticFiles(directory=RUVIEW_DIR, html=True), name="ruview")
-    print(f"[INFO] RuView UI mounted at /ruview from {RUVIEW_DIR}")
-else:
-    print(f"[WARNING] RuView UI directory not found at {RUVIEW_DIR}")
-
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -86,8 +76,12 @@ async def _stream_generator(session_id: str, message: str, chat_type: str,
     action_engine.set_browser(browser_key)
 
     # Try action engine first
-    action_result, action_type = await asyncio.to_thread(
+    action_result, action_type, suggested_mode = await asyncio.to_thread(
         action_engine.evaluate_and_execute_with_type, message)
+    
+    # Auto-route to realtime if LLM suggests it
+    if suggested_mode == "realtime" and chat_type != "realtime":
+        chat_type = "realtime"
     
     if action_result:
         # Send filler immediately for action (smart - detects question vs statement)
@@ -121,6 +115,10 @@ async def _stream_generator(session_id: str, message: str, chat_type: str,
             except Exception: pass
         yield f"data: {json.dumps({'chunk': action_result, 'done': True})}\n\n"
         return
+
+    # Check if we need to switch to realtime mode based on LLM suggestion
+    if suggested_mode == "realtime":
+        chat_type = "realtime"
 
     # Normal chat flow
     chat_service.add_message(session.session_id, "user", message)
@@ -194,7 +192,7 @@ async def _stream_generator(session_id: str, message: str, chat_type: str,
 async def root():
     fp = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "index.html")
     if os.path.exists(fp): return FileResponse(fp)
-    return {"name": "N.A.T. v5", "status": "running"}
+    return {"name": "N.A.T. v4", "status": "running"}
 
 @app.get("/health")
 async def health():
@@ -214,13 +212,6 @@ async def greet():
     try: audio_b64 = await tts_service.get_audio_base64(greeting)
     except Exception: pass
     return {"greeting": greeting, "audio": audio_b64}
-
-@app.get("/widget")
-async def widget():
-    """Serve the floating mini-window widget."""
-    fp = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "widget.html")
-    if os.path.exists(fp): return FileResponse(fp)
-    return {"error": "widget.html not found"}
 
 
 # ── Chat endpoints ────────────────────────────────────────────────────────
@@ -374,16 +365,6 @@ async def kb_press(request: PressKeyReq):
     result = await asyncio.to_thread(keyboard_ctrl.press_key, request.key)
     return result
 
-@app.post("/keyboard/search")
-async def kb_search(request: Request):
-    data = await request.json()
-    url = data.get("url",""); query = data.get("query",""); engine = data.get("engine","google")
-    if not url and query:
-        import urllib.parse
-        bases = {"google":"https://www.google.com/search?q=","youtube":"https://www.youtube.com/results?search_query=","github":"https://github.com/search?q=","bing":"https://www.bing.com/search?q=","reddit":"https://www.reddit.com/search/?q="}
-        url = bases.get(engine,bases["google"]) + urllib.parse.quote_plus(query)
-    return await asyncio.to_thread(keyboard_ctrl.focus_addressbar_and_search, url)
-
 @app.get("/keyboard/status")
 async def kb_status():
     return keyboard_ctrl.get_status()
@@ -409,15 +390,6 @@ class MouseScrollReq(BaseModel):
     x: int = None
     y: int = None
 
-class ScrollNReq(BaseModel):
-    count: int = 3
-    direction: str = "down"
-    interval: float = 0.8
-
-class ScrollStartReq(BaseModel):
-    direction: str = "down"
-    speed: str = "slow"
-
 @app.post("/mouse/move")
 async def mouse_move(request: MouseMoveReq):
     return await asyncio.to_thread(mouse_ctrl.move, request.x, request.y, request.duration)
@@ -431,18 +403,6 @@ async def mouse_click(request: MouseClickReq):
 @app.post("/mouse/scroll")
 async def mouse_scroll(request: MouseScrollReq):
     return await asyncio.to_thread(mouse_ctrl.scroll, request.x, request.y, request.amount)
-
-@app.post("/mouse/scroll-n")
-async def mouse_scroll_n(request: ScrollNReq):
-    return await asyncio.to_thread(mouse_ctrl.scroll_n_times, request.count, request.direction, request.interval)
-
-@app.post("/mouse/scroll-start")
-async def mouse_scroll_start(request: ScrollStartReq):
-    return await asyncio.to_thread(mouse_ctrl.start_continuous_scroll, request.direction, request.speed)
-
-@app.post("/mouse/scroll-stop")
-async def mouse_scroll_stop():
-    return mouse_ctrl.stop_scroll()
 
 @app.get("/mouse/position")
 async def mouse_position():
@@ -532,82 +492,7 @@ async def browser_open(request: OpenUrlRequest):
 
 @app.post("/browser/search")
 async def browser_search(request: SearchRequest):
-    return terminal_browser_service.open_search(request.query, request.engine)
-
-
-# ════════════════════════════════════════════════════════════════════════════
-#  PLAYWRIGHT BROWSER AUTOMATION ENDPOINTS
-# ════════════════════════════════════════════════════════════════════════════
-
-class BrowserActionRequest(BaseModel):
-    action: str
-    selector: str = ""
-    text: str = ""
-    url: str = ""
-    key: str = ""
-    x: int = 0
-    y: int = 500
-    path: str = ""
-    script: str = ""
-    index: int = 0
-
-@app.post("/playwright/init")
-async def playwright_init(headless: bool = False):
-    return await playwright_browser.init(headless=headless)
-
-@app.post("/playwright/open")
-async def playwright_open(url: str):
-    return await playwright_browser.open_url(url)
-
-@app.post("/playwright/github-search")
-async def playwright_github_search(query: str):
-    return await playwright_browser.search_github(query)
-
-@app.post("/playwright/action")
-async def playwright_action(request: BrowserActionRequest):
-    action = request.action
-    if action == "click":
-        return await playwright_browser.click(request.selector)
-    elif action == "fill":
-        return await playwright_browser.fill(request.selector, request.text)
-    elif action == "type":
-        return await playwright_browser.type_text(request.selector, request.text)
-    elif action == "press":
-        return await playwright_browser.press_key(request.key)
-    elif action == "scroll":
-        return await playwright_browser.scroll(request.x, request.y)
-    elif action == "screenshot":
-        return await playwright_browser.screenshot(request.path)
-    elif action == "new_tab":
-        return await playwright_browser.new_tab(request.url)
-    elif action == "close_tab":
-        return await playwright_browser.close_tab(request.index)
-    elif action == "switch_tab":
-        return await playwright_browser.switch_tab(request.index)
-    elif action == "script":
-        return await playwright_browser.execute_script(request.script)
-    else:
-        return {"success": False, "message": f"Unknown action: {action}"}
-
-@app.get("/playwright/get-text")
-async def playwright_get_text(selector: str):
-    return await playwright_browser.get_text(selector)
-
-@app.get("/playwright/get-html")
-async def playwright_get_html(selector: str = ""):
-    return await playwright_browser.get_html(selector)
-
-@app.get("/playwright/screenshot")
-async def playwright_screenshot(path: str = "playwright_screenshot.png"):
-    return await playwright_browser.screenshot(path)
-
-@app.post("/playwright/close")
-async def playwright_close():
-    return await playwright_browser.close()
-
-@app.get("/playwright/status")
-async def playwright_status():
-    return {"initialized": playwright_browser.is_initialized, "available": playwright_browser.is_available()}
+    return browser_service.open_search(request.query, request.engine)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -632,7 +517,7 @@ async def detailed_status():
     if getattr(config,'GROQ_API_KEYS',None): api_sources.append("groq")
     if getattr(config,'TAVILY_API_KEY',None): api_sources.append("tavily")
     return DetailedSystemStatus(
-        name="N.A.T.", full_name="Natasha", version="5.0.0", status="running",
+        name="N.A.T.", full_name="Natasha", version="4.0.0", status="running",
         uptime_start=startup_time.strftime("%Y-%m-%d %H:%M:%S"),
         current_time=get_current_datetime(), model=config.GROQ_MODEL,
         groq_api="Available" if groq_service.is_available() else "Not configured",
@@ -718,5 +603,3 @@ async def intelligence(request: IntelligenceReq):
                 "timestamp": get_current_datetime()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
