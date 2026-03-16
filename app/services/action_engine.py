@@ -259,53 +259,105 @@ class SmartActionEngine:
 
     def _build_search_url(self, query: str, engine: str) -> str:
         import urllib.parse
+        engine = engine.lower().strip()
+        
+        # Predefined search URLs
         bases = {
             "google":  "https://www.google.com/search?q=",
             "youtube": "https://www.youtube.com/results?search_query=",
             "github":  "https://github.com/search?q=",
             "bing":    "https://www.bing.com/search?q=",
             "reddit":  "https://www.reddit.com/search/?q=",
+            "amazon":  "https://www.amazon.in/s?k=",
+            "flipkart": "https://www.flipkart.com/search?q=",
+            "wikipedia": "https://en.wikipedia.org/wiki/",
+            "twitter": "https://twitter.com/search?q=",
+            "linkedin": "https://www.linkedin.com/search/results/index/?keywords=",
+            "stack overflow": "https://stackoverflow.com/search?q=",
+            "stackoverflow": "https://stackoverflow.com/search?q=",
+            "yahoo": "https://search.yahoo.com/search?p=",
+            "duckduckgo": "https://duckduckgo.com/?q=",
+            "chatgpt": "https://chat.openai.com/?q=",
+            "gpt": "https://chat.openai.com/?q=",
         }
-        return bases.get(engine.lower(), bases["google"]) + urllib.parse.quote_plus(query)
+        
+        if engine in bases:
+            return bases[engine] + urllib.parse.quote_plus(query)
+        
+        # Dynamic: assume it's a domain - convert to search
+        # e.g., "news" -> https://news.google.com/search?q=
+        website = engine.replace(' ', '').replace('.com', '').replace('.in', '')
+        return f"https://www.{engine}/search?q=" + urllib.parse.quote_plus(query)
 
     def _quick_trigger(self, message: str) -> Optional[dict]:
-        """Quick keyword-based triggers for common actions"""
-        msg = message.lower()
+        """Quick keyword-based triggers for any website/browser action"""
+        import re
+        msg = message.lower().strip()
         
-        # GitHub triggers
-        if "open github" in msg or "go to github" in msg:
-            if "search" in msg:
-                # Extract query from message
-                query = msg.replace("open github", "").replace("go to github", "").replace("search", "").replace("for", "").strip()
-                if query:
-                    return {"action": "github_search", "query": query}
-            return {"action": "open_browser", "url": "https://github.com"}
+        # Pattern: "open [website]" or "go to [website]" or "visit [website]"
+        open_patterns = [
+            r'^(open|go to|visit|launch)\s+(.+)$',
+            r'^(.+)\s+(open|go to|visit|launch)$',
+        ]
         
-        # YouTube
-        if "open youtube" in msg or "go to youtube" in msg:
-            if "search" in msg:
-                query = msg.replace("open youtube", "").replace("go to youtube", "").replace("search", "").replace("for", "").strip()
-                if query:
-                    return {"action": "smart_search", "query": query, "engine": "youtube"}
-            return {"action": "open_browser", "url": "https://youtube.com"}
+        for pattern in open_patterns:
+            match = re.match(pattern, msg)
+            if match:
+                # Extract website name - take the non-command part
+                groups = match.groups()
+                if len(groups) >= 2 and groups[1]:
+                    website = groups[1].strip()
+                else:
+                    website = groups[0].strip() if groups else ""
+                # Clean up
+                website = website.strip('.,!?')
+                if website and len(website) > 1:
+                    # Build URL - add https:// if no protocol
+                    url = website
+                    if not url.startswith('http'):
+                        # Common websites get direct URLs
+                        if '.' not in url:
+                            url = 'https://www.' + url + '.com'
+                        else:
+                            url = 'https://' + url
+                    return {"action": "open_browser", "url": url}
         
-        # Google search
-        if msg.startswith("search ") or "search for " in msg:
-            query = msg.replace("search ", "").replace("search for ", "").strip()
+        # Pattern: "search [query] on/in [website]" or "[website] search [query]"
+        search_patterns = [
+            r'^search\s+(.+?)\s+(on|in|at)\s+(.+)$',
+            r'^(.+?)\s+search\s+(.+)$',
+            r'^(.+)\s+(search|find|look up)\s+(.+)$',
+        ]
+        
+        for pattern in search_patterns:
+            match = re.match(pattern, msg)
+            if match:
+                groups = match.groups()
+                num_groups = len([g for g in groups if g is not None])
+                
+                if num_groups >= 3:
+                    query = groups[0].strip() if groups[0] else ""
+                    website = groups[2].strip() if groups[2] else ""
+                elif num_groups >= 2:
+                    website = groups[0].strip() if groups[0] else ""
+                    query = groups[1].strip() if groups[1] else ""
+                else:
+                    continue
+                
+                query = query.strip('.,!?')
+                website = website.strip('.,!?')
+                
+                if query and website:
+                    # Build search URL based on website
+                    search_url = self._build_search_url(query, website)
+                    if search_url:
+                        return {"action": "smart_search", "query": query, "engine": website, "url": search_url}
+        
+        # Simple "search [query]" defaults to google
+        if msg.startswith("search ") or msg.startswith("find ") or msg.startswith("look up "):
+            query = msg.replace("search ", "").replace("find ", "").replace("look up ", "").strip()
             if query:
                 return {"action": "smart_search", "query": query, "engine": "google"}
-        
-        # Open website
-        if msg.startswith("open ") and ("." in msg or "website" in msg):
-            words = msg.split()
-            for i, word in enumerate(words):
-                if word in ["open", "website", "a", "the"]:
-                    words[i] = ""
-            url = " ".join(words).strip()
-            if url and "." in url:
-                if not url.startswith("http"):
-                    url = "https://" + url
-                return {"action": "open_browser", "url": url}
         
         return None
 
