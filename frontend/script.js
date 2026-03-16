@@ -1642,3 +1642,134 @@ function addWifiLog(msg) {
 // ══════════════════════════════════════════════════════════════════════════
 
 
+
+// ══════════════════════════════════════════════════════════════════════════
+//  WiFi SENSING MODAL - RuView Integration
+// ══════════════════════════════════════════════════════════════════════════
+
+(function initWiFiModal() {
+    const wifiToggleBtn = document.getElementById('wifi-toggle-nav');
+    const wifiModal = document.getElementById('wifi-modal');
+    const wifiModalClose = document.getElementById('wifi-modal-close');
+    const ruviewIframe = document.getElementById('ruview-iframe');
+    
+    let wifiSensingActive = false;
+    let wifiWebSocket = null;
+
+    // Open WiFi modal
+    function openWiFiModal() {
+        if (wifiModal) {
+            wifiModal.style.display = 'flex';
+            wifiToggleBtn.classList.add('active');
+            
+            // Initialize WebSocket connection for real-time data
+            connectWiFiWebSocket();
+            
+            // Add escape key handler
+            document.addEventListener('keydown', handleEscapeKey);
+        }
+    }
+
+    // Close WiFi modal
+    function closeWiFiModal() {
+        if (wifiModal) {
+            wifiModal.style.display = 'none';
+            wifiToggleBtn.classList.remove('active');
+            
+            // Disconnect WebSocket
+            if (wifiWebSocket) {
+                wifiWebSocket.close();
+                wifiWebSocket = null;
+            }
+            
+            // Remove escape key handler
+            document.removeEventListener('keydown', handleEscapeKey);
+        }
+    }
+
+    // Handle escape key
+    function handleEscapeKey(e) {
+        if (e.key === 'Escape') {
+            closeWiFiModal();
+        }
+    }
+
+    // Connect to WiFi sensing WebSocket
+    function connectWiFiWebSocket() {
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/wifi/ws`;
+        
+        try {
+            wifiWebSocket = new WebSocket(wsUrl);
+            
+            wifiWebSocket.onopen = () => {
+                console.log('WiFi sensing WebSocket connected');
+                // Request initial status
+                wifiWebSocket.send(JSON.stringify({ command: 'status' }));
+            };
+            
+            wifiWebSocket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                // Forward data to RuView iframe
+                if (ruviewIframe && ruviewIframe.contentWindow) {
+                    ruviewIframe.contentWindow.postMessage({
+                        type: 'wifi_data',
+                        data: data
+                    }, '*');
+                }
+            };
+            
+            wifiWebSocket.onerror = (error) => {
+                console.error('WiFi WebSocket error:', error);
+            };
+            
+            wifiWebSocket.onclose = () => {
+                console.log('WiFi sensing WebSocket disconnected');
+            };
+            
+        } catch (error) {
+            console.error('Failed to connect WiFi WebSocket:', error);
+        }
+    }
+
+    // Event listeners
+    if (wifiToggleBtn) {
+        wifiToggleBtn.addEventListener('click', () => {
+            if (wifiModal.style.display === 'none' || !wifiModal.style.display) {
+                openWiFiModal();
+            } else {
+                closeWiFiModal();
+            }
+        });
+    }
+
+    if (wifiModalClose) {
+        wifiModalClose.addEventListener('click', closeWiFiModal);
+    }
+
+    // Close modal on background click
+    if (wifiModal) {
+        wifiModal.addEventListener('click', (e) => {
+            if (e.target === wifiModal) {
+                closeWiFiModal();
+            }
+        });
+    }
+
+    // Handle messages from chat for WiFi control
+    window.addEventListener('message', (event) => {
+        // Handle WiFi control commands from chat
+        if (event.data.type === 'wifi_control') {
+            if (event.data.action === 'open') {
+                openWiFiModal();
+            } else if (event.data.action === 'close') {
+                closeWiFiModal();
+            } else if (event.data.action === 'start' && wifiWebSocket) {
+                wifiWebSocket.send(JSON.stringify({ command: 'start' }));
+            } else if (event.data.action === 'stop' && wifiWebSocket) {
+                wifiWebSocket.send(JSON.stringify({ command: 'stop' }));
+            }
+        }
+    });
+})();

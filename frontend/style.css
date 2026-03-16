@@ -2400,3 +2400,100 @@ textarea {
     color: #86efac;
     margin-top: 2px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   WiFi SENSING MODAL - RuView Integration
+   Full-screen modal that displays the RuView interface
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.wifi-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(5, 5, 16, 0.98);
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    backdrop-filter: blur(10px);
+    animation: fadeIn 0.3s ease;
+}
+
+.wifi-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem 2rem;
+    background: rgba(15, 15, 30, 0.8);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+.wifi-modal-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    background: linear-gradient(135deg, #00ffff 0%, #0099ff 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.wifi-modal-close {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.wifi-modal-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: scale(1.05);
+}
+
+.wifi-modal-close svg {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.wifi-modal-content {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.wifi-modal-content iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #000;
+}
+
+/* Fade in animation */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* WiFi toggle button active state */
+.wifi-toggle-btn.active {
+    background: linear-gradient(135deg, #00ffff 0%, #0099ff 100%);
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+}
+
+.wifi-toggle-btn.active svg {
+    color: #000;
+}
