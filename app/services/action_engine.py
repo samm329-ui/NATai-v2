@@ -268,9 +268,56 @@ class SmartActionEngine:
         }
         return bases.get(engine.lower(), bases["google"]) + urllib.parse.quote_plus(query)
 
+    def _quick_trigger(self, message: str) -> Optional[dict]:
+        """Quick keyword-based triggers for common actions"""
+        msg = message.lower()
+        
+        # GitHub triggers
+        if "open github" in msg or "go to github" in msg:
+            if "search" in msg:
+                # Extract query from message
+                query = msg.replace("open github", "").replace("go to github", "").replace("search", "").replace("for", "").strip()
+                if query:
+                    return {"action": "github_search", "query": query}
+            return {"action": "open_browser", "url": "https://github.com"}
+        
+        # YouTube
+        if "open youtube" in msg or "go to youtube" in msg:
+            if "search" in msg:
+                query = msg.replace("open youtube", "").replace("go to youtube", "").replace("search", "").replace("for", "").strip()
+                if query:
+                    return {"action": "smart_search", "query": query, "engine": "youtube"}
+            return {"action": "open_browser", "url": "https://youtube.com"}
+        
+        # Google search
+        if msg.startswith("search ") or "search for " in msg:
+            query = msg.replace("search ", "").replace("search for ", "").strip()
+            if query:
+                return {"action": "smart_search", "query": query, "engine": "google"}
+        
+        # Open website
+        if msg.startswith("open ") and ("." in msg or "website" in msg):
+            words = msg.split()
+            for i, word in enumerate(words):
+                if word in ["open", "website", "a", "the"]:
+                    words[i] = ""
+            url = " ".join(words).strip()
+            if url and "." in url:
+                if not url.startswith("http"):
+                    url = "https://" + url
+                return {"action": "open_browser", "url": url}
+        
+        return None
+
     def evaluate_and_execute(self, message: str, data: Optional[dict] = None) -> Optional[str]:
+        # First try quick keyword triggers
+        if not data:
+            data = self._quick_trigger(message)
+        
+        # Then try LLM classification
         if not data:
             data = self._classify(message)
+        
         if not data: return None
         action = data.get("action", "chat")
         if action == "chat": return None

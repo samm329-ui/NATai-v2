@@ -763,6 +763,51 @@ async def get_wifi_detections():
         "timestamp": datetime.now().isoformat()
     }
 
+# Frontend-compatible WiFi sensing routes (wifi-sensing/*)
+@app.get("/wifi-sensing/hardware")
+async def wifi_sensing_hardware():
+    """Get hardware detection"""
+    return wifi_sensing_service.get_hardware_info()
+
+@app.get("/wifi-sensing/status")
+async def wifi_sensing_status_v2():
+    """Get WiFi sensing status"""
+    return wifi_sensing_service.get_current_status()
+
+@app.post("/wifi-sensing/start")
+async def start_wifi_sensing_v2():
+    """Start WiFi sensing"""
+    try:
+        await wifi_sensing_service.start_sensing()
+        return {"success": True, "message": "WiFi sensing started", "status": wifi_sensing_service.get_current_status()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/wifi-sensing/stop")
+async def stop_wifi_sensing_v2():
+    """Stop WiFi sensing"""
+    try:
+        await wifi_sensing_service.stop_sensing()
+        return {"success": True, "message": "WiFi sensing stopped"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/wifi-sensing/stream")
+async def wifi_sensing_sse(request: Request):
+    """SSE stream for WiFi sensing updates"""
+    async def event_generator():
+        last_id = 0
+        while True:
+            if request.client.disconnected:
+                break
+            detections = wifi_sensing_service.get_current_detections()
+            status = wifi_sensing_service.get_current_status()
+            last_id += 1
+            yield f"data: {json.dumps({'id': last_id, 'type': 'detection', 'detections': detections, 'status': status})}\n\n"
+            await asyncio.sleep(0.5)
+    
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
 @app.websocket("/wifi/ws")
 async def wifi_sensing_websocket(websocket):
     """WebSocket endpoint for real-time WiFi sensing data"""

@@ -338,6 +338,17 @@ class WiFiSensingService:
     def get_current_detections(self) -> List[Dict[str, Any]]:
         """Get latest detections"""
         return self.current_detections
+    
+    def get_hardware_info(self) -> Dict[str, Any]:
+        """Get hardware info for frontend"""
+        return {
+            "esp32_available": False,
+            "rssi_available": True,
+            "csi_available": False,
+            "demo_mode": True,
+            "supported_modes": ["demo", "rssi"],
+            "device": "demo" if self.demo_mode else "unknown"
+        }
 
 # Singleton instance
 wifi_sensing_service = WiFiSensingService()
