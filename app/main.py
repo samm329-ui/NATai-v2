@@ -29,7 +29,6 @@ from app.services.tts_service import tts_service
 from app.services.browser_detect import browser_store
 from app.services.desktop_service import keyboard_ctrl, mouse_ctrl, screen_ctrl, desktop_status
 from app.services.browser_automation_service import browser_service as playwright_browser
-from app.services.wifi_sensing_service import wifi_sensing_service
 from app.utils.time_info import get_current_datetime
 
 startup_time = datetime.now()
@@ -46,25 +45,17 @@ register_activity_callback(_activity_push)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("\n" + "="*70)
-    print("  N.A.T. AI Assistant v5 — Natasha + WiFi Sensing")
-    print("  Smart Search + Browser Automation + WiFi DensePose Integration")
+    print("  N.A.T. AI Assistant v5 — Natasha")
+    print("  Smart Search + Browser Automation + Desktop Control")
     print("="*70)
     print(f"  Model:        {config.GROQ_MODEL}")
     print(f"  Groq API:     {'✓' if groq_service.is_available() else '✗ not configured'}")
     print(f"  Web Search:   {'✓' if getattr(config,'TAVILY_API_KEY',None) else '✗ not configured'}")
     print(f"  Desktop:      {'✓ pyautogui' if keyboard_ctrl.is_available() else '✗ pip install pyautogui'}")
-    print(f"  WiFi Sensing: {'✓ available' if TORCH_AVAILABLE else '✗ demo mode'}")
     print(f"  Learning:     {config.LEARNING_DATA_PATH}")
     print("="*70 + "\n")
     yield
     print("\n[Natasha] Shutdown complete")
-
-# Import torch check for WiFi sensing
-try:
-    import torch
-    TORCH_AVAILABLE = True
-except:
-    TORCH_AVAILABLE = False
 
 
 app = FastAPI(title="N.A.T. v5", version="5.0.0", lifespan=lifespan)
@@ -728,123 +719,4 @@ async def intelligence(request: IntelligenceReq):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ════════════════════════════════════════════════════════════════════════════
-#  WiFi SENSING - RuView Integration
-# ════════════════════════════════════════════════════════════════════════════
 
-@app.get("/wifi/status")
-async def wifi_sensing_status():
-    """Get WiFi sensing system status"""
-    return wifi_sensing_service.get_current_status()
-
-@app.post("/wifi/start")
-async def start_wifi_sensing():
-    """Start WiFi sensing"""
-    try:
-        await wifi_sensing_service.start_sensing()
-        return {"success": True, "message": "WiFi sensing started", "status": wifi_sensing_service.get_current_status()}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/wifi/stop")
-async def stop_wifi_sensing():
-    """Stop WiFi sensing"""
-    try:
-        await wifi_sensing_service.stop_sensing()
-        return {"success": True, "message": "WiFi sensing stopped"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/wifi/detections")
-async def get_wifi_detections():
-    """Get current WiFi pose detections"""
-    return {
-        "detections": wifi_sensing_service.get_current_detections(),
-        "timestamp": datetime.now().isoformat()
-    }
-
-# Frontend-compatible WiFi sensing routes (wifi-sensing/*)
-@app.get("/wifi-sensing/hardware")
-async def wifi_sensing_hardware():
-    """Get hardware detection"""
-    return wifi_sensing_service.get_hardware_info()
-
-@app.get("/wifi-sensing/status")
-async def wifi_sensing_status_v2():
-    """Get WiFi sensing status"""
-    return wifi_sensing_service.get_current_status()
-
-@app.post("/wifi-sensing/start")
-async def start_wifi_sensing_v2():
-    """Start WiFi sensing"""
-    try:
-        await wifi_sensing_service.start_sensing()
-        return {"success": True, "message": "WiFi sensing started", "status": wifi_sensing_service.get_current_status()}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/wifi-sensing/stop")
-async def stop_wifi_sensing_v2():
-    """Stop WiFi sensing"""
-    try:
-        await wifi_sensing_service.stop_sensing()
-        return {"success": True, "message": "WiFi sensing stopped"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/wifi-sensing/stream")
-async def wifi_sensing_sse(request: Request):
-    """SSE stream for WiFi sensing updates"""
-    async def event_generator():
-        last_id = 0
-        while True:
-            if request.client.disconnected:
-                break
-            detections = wifi_sensing_service.get_current_detections()
-            status = wifi_sensing_service.get_current_status()
-            last_id += 1
-            yield f"data: {json.dumps({'id': last_id, 'type': 'detection', 'detections': detections, 'status': status})}\n\n"
-            await asyncio.sleep(0.5)
-    
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
-
-@app.websocket("/wifi/ws")
-async def wifi_sensing_websocket(websocket):
-    """WebSocket endpoint for real-time WiFi sensing data"""
-    await websocket.accept()
-    await wifi_sensing_service.add_connection(websocket)
-    
-    try:
-        # Send initial status
-        await websocket.send_json({
-            "type": "connected",
-            "status": wifi_sensing_service.get_current_status()
-        })
-        
-        # Keep connection alive and handle incoming messages
-        while True:
-            try:
-                data = await websocket.receive_text()
-                message = json.loads(data)
-                
-                # Handle control messages
-                if message.get("command") == "start":
-                    await wifi_sensing_service.start_sensing()
-                    await websocket.send_json({"type": "status", "message": "Sensing started"})
-                elif message.get("command") == "stop":
-                    await wifi_sensing_service.stop_sensing()
-                    await websocket.send_json({"type": "status", "message": "Sensing stopped"})
-                elif message.get("command") == "status":
-                    await websocket.send_json({
-                        "type": "status",
-                        "status": wifi_sensing_service.get_current_status()
-                    })
-                    
-            except Exception as e:
-                print(f"WebSocket message error: {e}")
-                break
-                
-    except Exception as e:
-        print(f"WebSocket error: {e}")
-    finally:
-        await wifi_sensing_service.remove_connection(websocket)
