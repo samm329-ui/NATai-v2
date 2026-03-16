@@ -194,6 +194,12 @@ async def root():
     if os.path.exists(fp): return FileResponse(fp)
     return {"name": "N.A.T. v4", "status": "running"}
 
+@app.get("/wifi-scanner")
+async def wifi_scanner():
+    fp = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "wifi-scanner.html")
+    if os.path.exists(fp): return FileResponse(fp)
+    raise HTTPException(status_code=404, detail="WiFi Scanner not found")
+
 @app.get("/health")
 async def health():
     return {"status": "healthy", "timestamp": get_current_datetime(),

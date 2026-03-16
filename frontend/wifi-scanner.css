@@ -1,0 +1,857 @@
+/* ================================================================
+   WiFi Scanner - Omarchy Linux Terminal Style
+   ================================================================ */
+:root {
+    --term-bg: #0a0a0a;
+    --term-bg-secondary: #111111;
+    --term-bg-panel: #0d0d0d;
+    --term-border: #1a1a1a;
+    --term-text: #00ff41;
+    --term-text-dim: #00aa2a;
+    --term-text-error: #ff3333;
+    --term-text-warning: #ffaa00;
+    --term-text-info: #00aaff;
+    --term-text-cyan: #00ffff;
+    --term-text-magenta: #ff00ff;
+    --term-text-white: #e0e0e0;
+    --term-prompt: #00ff41;
+    --term-cmd: #ffff00;
+    --term-string: #ff9500;
+    --term-number: #00ffff;
+    --term-keyword: #ff00ff;
+    --scan-bar-good: #00ff41;
+    --scan-bar-medium: #ffaa00;
+    --scan-bar-weak: #ff3333;
+    --scan-encryption-open: #ff3333;
+    --scan-encryption-wep: #ffaa00;
+    --scan-encryption-wpa: #00aaff;
+    --scan-encryption-wpa2: #00ff41;
+    --scan-encryption-wpa3: #00ffff;
+    --font-mono: 'Fira Code', 'Source Code Pro', 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+    --font-size: 13px;
+    --line-height: 1.6;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background: var(--term-bg);
+    color: var(--term-text);
+    font-family: var(--font-mono);
+    font-size: var(--font-size);
+    line-height: var(--line-height);
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+#wifi-scanner-app {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    padding: 20px;
+    gap: 20px;
+}
+
+/* ================================================================
+   Header / Terminal Title Bar
+   ================================================================ */
+.scanner-header {
+    background: var(--term-bg-secondary);
+    border: 1px solid var(--term-border);
+    border-radius: 8px 8px 0 0;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 2px solid var(--term-text-dim);
+}
+
+.scanner-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.scanner-title h1 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--term-text-white);
+    letter-spacing: 1px;
+}
+
+.scanner-title .wifi-icon {
+    font-size: 20px;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.scanner-controls {
+    display: flex;
+    gap: 8px;
+}
+
+.scanner-btn {
+    background: transparent;
+    border: 1px solid var(--term-border);
+    color: var(--term-text-dim);
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.scanner-btn:hover {
+    background: var(--term-text-dim);
+    color: var(--term-bg);
+    border-color: var(--term-text-dim);
+}
+
+.scanner-btn.active {
+    background: var(--term-text);
+    color: var(--term-bg);
+    border-color: var(--term-text);
+}
+
+.scanner-btn.danger {
+    border-color: var(--term-text-error);
+    color: var(--term-text-error);
+}
+
+.scanner-btn.danger:hover {
+    background: var(--term-text-error);
+    color: var(--term-bg);
+}
+
+/* ================================================================
+   Main Layout - Grid
+   ================================================================ */
+.scanner-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    flex: 1;
+}
+
+.scanner-panel {
+    background: var(--term-bg-panel);
+    border: 1px solid var(--term-border);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.panel-header {
+    background: var(--term-bg-secondary);
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--term-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.panel-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--term-text-cyan);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.panel-status {
+    font-size: 11px;
+    color: var(--term-text-dim);
+}
+
+.panel-status.live {
+    color: var(--term-text);
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.panel-content {
+    flex: 1;
+    padding: 14px;
+    overflow-y: auto;
+}
+
+/* ================================================================
+   Terminal Output Section
+   ================================================================ */
+.terminal-output {
+    background: #000;
+    border: 1px solid var(--term-border);
+    border-radius: 4px;
+    padding: 14px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    height: 100%;
+    overflow-y: auto;
+    max-height: 400px;
+}
+
+.term-line {
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin-bottom: 2px;
+}
+
+.term-prompt {
+    color: var(--term-prompt);
+}
+
+.term-cmd {
+    color: var(--term-cmd);
+}
+
+.term-output {
+    color: var(--term-text-white);
+}
+
+.term-info {
+    color: var(--term-text-info);
+}
+
+.term-success {
+    color: var(--term-text);
+}
+
+.term-warning {
+    color: var(--term-text-warning);
+}
+
+.term-error {
+    color: var(--term-text-error);
+}
+
+.term-string {
+    color: var(--term-string);
+}
+
+.term-number {
+    color: var(--term-number);
+}
+
+.term-timestamp {
+    color: var(--term-text-dim);
+    font-size: 10px;
+}
+
+/* ================================================================
+   Network List
+   ================================================================ */
+.network-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.network-item {
+    background: var(--term-bg-secondary);
+    border: 1px solid var(--term-border);
+    border-radius: 4px;
+    padding: 10px 12px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    transition: all 0.2s;
+}
+
+.network-item:hover {
+    border-color: var(--term-text-dim);
+    background: rgba(0, 255, 65, 0.05);
+}
+
+.network-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.network-ssid {
+    font-weight: 600;
+    color: var(--term-text-white);
+    font-size: 13px;
+}
+
+.network-details {
+    display: flex;
+    gap: 16px;
+    font-size: 11px;
+    color: var(--term-text-dim);
+}
+
+.network-bssid {
+    font-family: var(--font-mono);
+}
+
+.network-channel {
+    color: var(--term-text-cyan);
+}
+
+.network-freq {
+    color: var(--term-text-magenta);
+}
+
+.network-signal {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.signal-bar-container {
+    width: 60px;
+    height: 8px;
+    background: var(--term-bg);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.signal-bar {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s, background 0.3s;
+}
+
+.signal-bar.excellent {
+    background: var(--scan-bar-good);
+}
+
+.signal-bar.good {
+    background: var(--scan-bar-good);
+}
+
+.signal-bar.fair {
+    background: var(--scan-bar-medium);
+}
+
+.signal-bar.weak {
+    background: var(--scan-bar-weak);
+}
+
+.signal-dbm {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--term-text-white);
+}
+
+.signal-quality {
+    font-size: 10px;
+    color: var(--term-text-dim);
+}
+
+.encryption-badge {
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.encryption-badge.open {
+    background: rgba(255, 51, 51, 0.2);
+    color: var(--scan-encryption-open);
+    border: 1px solid var(--scan-encryption-open);
+}
+
+.encryption-badge.wep {
+    background: rgba(255, 170, 0, 0.2);
+    color: var(--scan-encryption-wep);
+    border: 1px solid var(--scan-encryption-wep);
+}
+
+.encryption-badge.wpa {
+    background: rgba(0, 170, 255, 0.2);
+    color: var(--scan-encryption-wpa);
+    border: 1px solid var(--scan-encryption-wpa);
+}
+
+.encryption-badge.wpa2 {
+    background: rgba(0, 255, 65, 0.2);
+    color: var(--scan-encryption-wpa2);
+    border: 1px solid var(--scan-encryption-wpa2);
+}
+
+.encryption-badge.wpa3 {
+    background: rgba(0, 255, 255, 0.2);
+    color: var(--scan-encryption-wpa3);
+    border: 1px solid var(--scan-encryption-wpa3);
+}
+
+/* ================================================================
+   RSSI Gauge
+   ================================================================ */
+.rssi-gauge-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
+}
+
+.rssi-gauge {
+    position: relative;
+    width: 180px;
+    height: 100px;
+}
+
+.rssi-gauge-bg {
+    position: absolute;
+    width: 180px;
+    height: 90px;
+    border-radius: 90px 90px 0 0;
+    background: conic-gradient(
+        from 180deg,
+        var(--scan-bar-weak) 0deg,
+        var(--scan-bar-medium) 60deg,
+        var(--scan-bar-good) 120deg,
+        var(--scan-bar-good) 180deg
+    );
+    overflow: hidden;
+}
+
+.rssi-gauge-bg::before {
+    content: '';
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    right: 15px;
+    bottom: 0;
+    background: var(--term-bg-panel);
+    border-radius: 75px 75px 0 0;
+}
+
+.rssi-needle {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 4px;
+    height: 70px;
+    background: var(--term-text-white);
+    transform-origin: bottom center;
+    transform: translateX(-50%) rotate(-90deg);
+    transition: transform 0.5s ease-out;
+    border-radius: 2px;
+    z-index: 2;
+}
+
+.rssi-needle::after {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 14px;
+    height: 14px;
+    background: var(--term-text-white);
+    border-radius: 50%;
+}
+
+.rssi-value-display {
+    text-align: center;
+}
+
+.rssi-value {
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--term-text);
+    line-height: 1;
+}
+
+.rssi-unit {
+    font-size: 14px;
+    color: var(--term-text-dim);
+}
+
+.rssi-label {
+    font-size: 11px;
+    color: var(--term-text-info);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+/* ================================================================
+   Signal Stats Grid
+   ================================================================ */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+.stat-card {
+    background: var(--term-bg-secondary);
+    border: 1px solid var(--term-border);
+    border-radius: 4px;
+    padding: 12px;
+    text-align: center;
+}
+
+.stat-label {
+    font-size: 10px;
+    color: var(--term-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+}
+
+.stat-value {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--term-text-white);
+}
+
+.stat-value.highlight {
+    color: var(--term-text);
+}
+
+.stat-value.warning {
+    color: var(--term-text-warning);
+}
+
+.stat-value.error {
+    color: var(--term-text-error);
+}
+
+.stat-unit {
+    font-size: 11px;
+    color: var(--term-text-dim);
+    margin-left: 2px;
+}
+
+/* ================================================================
+   Sparkline Chart
+   ================================================================ */
+.sparkline-container {
+    background: var(--term-bg-secondary);
+    border: 1px solid var(--term-border);
+    border-radius: 4px;
+    padding: 12px;
+}
+
+.sparkline-label {
+    font-size: 10px;
+    color: var(--term-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+
+.sparkline-canvas {
+    width: 100%;
+    height: 60px;
+    background: var(--term-bg);
+    border-radius: 2px;
+}
+
+/* ================================================================
+   Raw Data Section
+   ================================================================ */
+.raw-data-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.raw-data-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.raw-data-title {
+    font-size: 11px;
+    color: var(--term-text-cyan);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.raw-data-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.raw-data-btn {
+    background: transparent;
+    border: 1px solid var(--term-border);
+    color: var(--term-text-dim);
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    transition: all 0.2s;
+}
+
+.raw-data-btn:hover {
+    border-color: var(--term-text-dim);
+    color: var(--term-text);
+}
+
+.raw-data-content {
+    flex: 1;
+    background: #000;
+    border: 1px solid var(--term-border);
+    border-radius: 4px;
+    padding: 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.6;
+    overflow: auto;
+    max-height: 350px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.json-key {
+    color: var(--term-text-magenta);
+}
+
+.json-string {
+    color: var(--term-string);
+}
+
+.json-number {
+    color: var(--term-number);
+}
+
+.json-boolean {
+    color: var(--term-text-keyword);
+}
+
+.json-null {
+    color: var(--term-text-dim);
+}
+
+/* ================================================================
+   Scan Animation
+   ================================================================ */
+.scanning-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--term-text);
+    font-size: 12px;
+}
+
+.scanning-dots {
+    display: flex;
+    gap: 3px;
+}
+
+.scanning-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--term-text);
+    border-radius: 50%;
+    animation: scanDot 1.4s infinite ease-in-out both;
+}
+
+.scanning-dot:nth-child(1) { animation-delay: -0.32s; }
+.scanning-dot:nth-child(2) { animation-delay: -0.16s; }
+.scanning-dot:nth-child(3) { animation-delay: 0s; }
+
+@keyframes scanDot {
+    0%, 80%, 100% {
+        transform: scale(0);
+        opacity: 0.5;
+    }
+    40% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* ================================================================
+   Footer Status Bar
+   ================================================================ */
+.scanner-footer {
+    background: var(--term-bg-secondary);
+    border: 1px solid var(--term-border);
+    border-radius: 6px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--term-text-dim);
+}
+
+.footer-stats {
+    display: flex;
+    gap: 24px;
+}
+
+.footer-stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.footer-stat .label {
+    color: var(--term-text-dim);
+}
+
+.footer-stat .value {
+    color: var(--term-text-white);
+    font-weight: 600;
+}
+
+.footer-stat .value.live {
+    color: var(--term-text);
+}
+
+.footer-connection {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.connection-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--term-text-dim);
+}
+
+.connection-dot.connected {
+    background: var(--term-text);
+    box-shadow: 0 0 8px var(--term-text);
+}
+
+.connection-dot.error {
+    background: var(--term-text-error);
+}
+
+/* ================================================================
+   Scrollbar Styling
+   ================================================================ */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--term-bg);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--term-border);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--term-text-dim);
+}
+
+/* ================================================================
+   Responsive
+   ================================================================ */
+@media (max-width: 900px) {
+    .scanner-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    #wifi-scanner-app {
+        padding: 10px;
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .scanner-header {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .scanner-controls {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* ================================================================
+   Full Width Panel
+   ================================================================ */
+.scanner-panel.full-width {
+    grid-column: 1 / -1;
+}
+
+.network-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+}
+
+/* ================================================================
+   Loading State
+   ================================================================ */
+.loading-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: var(--term-text-dim);
+    gap: 12px;
+}
+
+.loading-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--term-border);
+    border-top-color: var(--term-text);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ================================================================
+   Empty State
+   ================================================================ */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 150px;
+    color: var(--term-text-dim);
+    text-align: center;
+    gap: 8px;
+}
+
+.empty-state-icon {
+    font-size: 32px;
+    opacity: 0.5;
+}
+
+.empty-state-text {
+    font-size: 12px;
+}

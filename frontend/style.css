@@ -2046,3 +2046,24 @@ textarea {
     color: #a78bfa !important;
     border-color: rgba(139, 92, 246, 0.4) !important;
 }
+
+/* ── WiFi Scanner button in header ── */
+.wifi-scanner-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius);
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all var(--transition);
+    text-decoration: none;
+}
+.wifi-scanner-btn:hover {
+    background: rgba(0, 255, 65, 0.1);
+    border-color: rgba(0, 255, 65, 0.3);
+    color: var(--term-text);
+}

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi Scanner - RuView Terminal</title>
+    <link rel="stylesheet" href="/static/wifi-scanner.css">
+</head>
+<body>
+    <div id="wifi-scanner-app">
+        <!-- Header -->
+        <header class="scanner-header">
+            <div class="scanner-title">
+                <span class="wifi-icon">📡</span>
+                <h1>WIFI-SCANNER // <span class="term-text-dim">Omarchy Terminal</span></h1>
+            </div>
+            <div class="scanner-controls">
+                <button class="scanner-btn active" id="btn-scan">▶ SCAN</button>
+                <button class="scanner-btn" id="btn-auto">AUTO</button>
+                <button class="scanner-btn" id="btn-stop">■ STOP</button>
+                <button class="scanner-btn" id="btn-clear">CLEAR</button>
+            </div>
+        </header>
+
+        <!-- Main Grid -->
+        <div class="scanner-grid">
+            
+            <!-- Terminal Output Panel -->
+            <div class="scanner-panel">
+                <div class="panel-header">
+                    <span class="panel-title">▸ Terminal Output</span>
+                    <span class="panel-status live" id="terminal-status">
+                        <span class="scanning-indicator">
+                            <span class="scanning-dots">
+                                <span class="scanning-dot"></span>
+                                <span class="scanning-dot"></span>
+                                <span class="scanning-dot"></span>
+                            </span>
+                            SCANNING
+                        </span>
+                    </span>
+                </div>
+                <div class="panel-content">
+                    <div class="terminal-output" id="terminal-output">
+                        <div class="term-line"><span class="term-timestamp">[INIT]</span> WiFi Scanner v1.0.0 starting...</div>
+                        <div class="term-line"><span class="term-timestamp">[INIT]</span> Interface: wlan0</div>
+                        <div class="term-line"><span class="term-timestamp">[INIT]</span> Mode: Monitor</div>
+                        <div class="term-line"><span class="term-timestamp">[INIT]</span> Channel: Auto-hop</div>
+                        <div class="term-line"><span class="term-timestamp">[INIT]</span> Ready for scanning.</div>
+                        <div class="term-line"><span class="term-prompt">user@omarchy</span>:<span class="term-cmd">~</span>$ <span class="term-cmd">sudo airmon-ng start wlan0</span></div>
+                        <div class="term-line term-success">[OK] Interface enabled for monitoring</div>
+                        <div class="term-line"><span class="term-prompt">user@omarchy</span>:<span class="term-cmd">~</span>$ <span class="term-cmd">airodump-ng wlan0mon --band abg</span></div>
+                        <div class="term-line term-info">[INFO] Scanning... press Ctrl+C to stop</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RSSI Gauge Panel -->
+            <div class="scanner-panel">
+                <div class="panel-header">
+                    <span class="panel-title">▸ Signal Strength</span>
+                    <span class="panel-status" id="rssi-status">-100 dBm</span>
+                </div>
+                <div class="panel-content">
+                    <div class="rssi-gauge-container">
+                        <div class="rssi-gauge">
+                            <div class="rssi-gauge-bg"></div>
+                            <div class="rssi-needle" id="rssi-needle"></div>
+                        </div>
+                        <div class="rssi-value-display">
+                            <div class="rssi-value" id="rssi-value">--</div>
+                            <div class="rssi-unit">dBm</div>
+                        </div>
+                        <div class="rssi-label">Current Signal</div>
+                    </div>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Variance</div>
+                            <div class="stat-value" id="stat-variance">0.0</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Motion Band</div>
+                            <div class="stat-value highlight" id="stat-motion">0.0</div>
+                            <div class="stat-unit">%</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Breath Band</div>
+                            <div class="stat-value" id="stat-breath">0.0</div>
+                            <div class="stat-unit">%</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Confidence</div>
+                            <div class="stat-value" id="stat-confidence">0%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Network List Panel -->
+            <div class="scanner-panel full-width">
+                <div class="panel-header">
+                    <span class="panel-title">▸ Detected Networks</span>
+                    <span class="panel-status" id="network-count">0 networks found</span>
+                </div>
+                <div class="panel-content">
+                    <div class="network-list" id="network-list">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📶</div>
+                            <div class="empty-state-text">No networks detected. Click SCAN to start.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sparkline Panel -->
+            <div class="scanner-panel">
+                <div class="panel-header">
+                    <span class="panel-title">▸ RSSI History</span>
+                </div>
+                <div class="panel-content">
+                    <div class="sparkline-container">
+                        <div class="sparkline-label">Signal Strength Over Time</div>
+                        <canvas class="sparkline-canvas" id="rssi-sparkline"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Raw Data Panel -->
+            <div class="scanner-panel">
+                <div class="panel-header">
+                    <span class="panel-title">▸ Raw Data Stream</span>
+                    <span class="panel-status" id="data-status">waiting...</span>
+                </div>
+                <div class="panel-content raw-data-container">
+                    <div class="raw-data-header">
+                        <span class="raw-data-title">Incoming JSON Data</span>
+                        <div class="raw-data-actions">
+                            <button class="raw-data-btn" id="btn-copy">COPY</button>
+                            <button class="raw-data-btn" id="btn-expand">EXPAND</button>
+                            <button class="raw-data-btn" id="btn-filter">FILTER</button>
+                        </div>
+                    </div>
+                    <div class="raw-data-content" id="raw-data">
+<span class="json-key">{
+  "timestamp"</span>: <span class="json-number">0</span>,
+  <span class="json-key">"source"</span>: <span class="json-string">"simulated"</span>,
+  <span class="json-key">"features"</span>: {
+    <span class="json-key">"mean_rssi"</span>: <span class="json-number">-45</span>,
+    <span class="json-key">"variance"</span>: <span class="json-number">1.5</span>,
+    <span class="json-key">"motion_band_power"</span>: <span class="json-number">0.05</span>,
+    <span class="json-key">"breathing_band_power"</span>: <span class="json-number">0.03</span>
+  },
+  <span class="json-key">"classification"</span>: {
+    <span class="json-key">"presence"</span>: <span class="json-boolean">true</span>,
+    <span class="json-key">"confidence"</span>: <span class="json-number">0.85</span>
+  }
+<span class="json-key">}</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Footer -->
+        <footer class="scanner-footer">
+            <div class="footer-stats">
+                <div class="footer-stat">
+                    <span class="label">Networks:</span>
+                    <span class="value" id="footer-networks">0</span>
+                </div>
+                <div class="footer-stat">
+                    <span class="label">Packets:</span>
+                    <span class="value" id="footer-packets">0</span>
+                </div>
+                <div class="footer-stat">
+                    <span class="label">Uptime:</span>
+                    <span class="value" id="footer-uptime">00:00:00</span>
+                </div>
+            </div>
+            <div class="footer-connection">
+                <span class="connection-dot connected" id="connection-dot"></span>
+                <span id="connection-text">Connected</span>
+            </div>
+        </footer>
+    </div>
+
+    <script src="/static/wifi-scanner-integrated.js"></script>
+</body>
+</html>
